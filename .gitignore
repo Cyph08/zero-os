@@ -1,0 +1,58 @@
+# Zero OS — repository ignore rules
+# Secrets and local state NEVER go to GitHub.
+
+# ── Secrets (broad patterns — the old ones missed google_*.json) ──
+.env
+.env.*
+!.env.example
+*credential*.json
+*credentials*.json
+*token*.json
+*secret*
+*.pem
+*.key
+*.p12
+client_secret*.json
+
+# ── Python ────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ── Local runtime state / personal data ───────────────────
+logs/
+trash/
+*.db
+*.sqlite3
+.zero/memory/chroma_db/
+.zero/memory/health_log.json
+.zero/memory/schedule.json
+.zero/skills/skills.db
+.zero/scheduler.db
+
+# ── Frontend ──────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ── Unity (regenerable — rebuilt on project open) ─────────
+.zero/unity/ZeroOS/Library/
+.zero/unity/ZeroOS/Temp/
+.zero/unity/ZeroOS/Logs/
+.zero/unity/ZeroOS/UserSettings/
+.zero/unity/ZeroOS/obj/
+*.csproj.user
+
+# ── Tauri build output ────────────────────────────────────
+.zero/ui/src-tauri/target/
+
+# ── Local machine config ──────────────────────────────────
+.claude/settings.local.json
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

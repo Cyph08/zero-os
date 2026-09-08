@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donkey Kong (1981) — classic arcade</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: monospace;
+            overflow: hidden;
+            user-select: none;
+        }
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            background: #1a1a1a;
+            padding: 20px 30px 20px 30px;
+            border-radius: 16px;
+            box-shadow: 0 0 40px rgba(255, 60, 60, 0.15);
+            border: 2px solid #3a2a2a;
+        }
+        canvas {
+            display: block;
+            width: 800px;
+            height: 600px;
+            border-radius: 8px;
+            background: #000;
+            image-rendering: pixelated;
+            box-shadow: 0 0 30px rgba(200, 60, 60, 0.25);
+            border: 2px solid #5a3a3a;
+        }
+        .controls-info {
+            display: flex;
+            gap: 28px;
+            color: #ccb89a;
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+            letter-spacing: 0.5px;
+            background: #0f0f0f;
+            padding: 8px 28px;
+            border-radius: 30px;
+            border: 1px solid #3a2a2a;
+            font-weight: 600;
+            text-shadow: 0 0 8px rgba(200, 120, 60, 0.2);
+        }
+        .controls-info kbd {
+            display: inline-block;
+            background: #2a1f1f;
+            color: #f0d8b0;
+            padding: 0 12px;
+            border-radius: 12px;
+            border: 1px solid #5a4a3a;
+            font-size: 13px;
+            font-weight: 700;
+            margin: 0 2px;
+        }
+        .controls-info span {
+            opacity: 0.8;
+        }
+        @media (max-width: 860px) {
+            .game-wrapper {
+                padding: 10px 12px;
+                border-radius: 10px;
+            }
+            canvas {
+                width: 100%;
+                height: auto;
+                max-width: 800px;
+                aspect-ratio: 4/3;
+            }
+            .controls-info {
+                flex-wrap: wrap;
+                gap: 10px 20px;
+                font-size: 13px;
+                padding: 6px 16px;
+                justify-content: center;
+            }
+        }
+        @media (max-width: 480px) {
+            .controls-info kbd {
+                padding: 0 8px;
+                font-size: 11px;
+            }
+            .controls-info {
+                font-size: 11px;
+                gap: 6px 14px;
+                padding: 5px 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="controls-info">
+            <span><kbd>←</kbd> <kbd>→</kbd> walk &nbsp;·&nbsp; <kbd>↑</kbd> climb up &nbsp;·&nbsp; <kbd>↓</kbd> climb down</span>
+            <span><kbd>SPACE</kbd> jump</span>
+        </div>
+    </div>
+    <script>
+        // ─── DONKEY KONG (25m stage) — full arcade remake ───
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // ── helpers ──
+        const rand = (min, max) => Math.random() * (max - min) + min;
+        const randInt = (min, max) => Math.floor(rand(min, max + 1));
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const lerp = (a, b, t) => a + (b - a) * t;
+
+        // ── level geometry ──
+        // platforms: sloped girders (left→right downward)
+        const PLATFORMS = [
+            { lx: 50, ly: 502, rx: 750, ry: 528 }, // bottom
+            { lx: 50, ly: 382, rx: 750, ry: 408 },
+            { lx: 50, ly: 262, rx: 750, ry: 288 },
+            { lx: 50, ly: 142, rx: 750, ry: 168 } // top
+        ];
+        // Pauline's tiny platform
+        const PAULINE_PLAT = { lx: 620, ly: 62, rx: 760, ry: 68 };
+
+        // ladders: [x, y1 (top), y2 (bottom)]
+        const LADDERS = [
+            { x: 120, y1: 388, y2: 502 },
+            { x: 680, y1: 268, y2: 408 },
+            { x: 120, y1: 148, y2: 288 },
+            { x: 680, y1: 65, y2: 168 }
+        ];
+
+        // helper: get platform y at x
+        function platY(plat, x) {
+            const t = (x - plat.lx) / (plat.rx - plat.lx);
+            return lerp(plat.ly, plat.ry, clamp(t, 0, 1));
+        }
+
+        // helper: find which platform a point is on (within y tolerance)
+        function findPlatform(x, y, tol = 12) {
+            for (const p of PLATFORMS) {
+                if (x >= p.lx - 8 && x <= p.rx + 8) {
+                    const py = platY(p, x);
+                    if (Math.abs(y - py) < tol) return p;
+                }
+            }
+            return null;
+        }
+
+        // ladder lookup
+        function ladderAt(x, yRange) {
+            for (const L of LADDERS) {
+                if (Math.abs(L.x - x) < 20 && yRange >= L.y1 - 4 && yRange <= L.y2 + 4) return L;
+            }
+            return null;
+        }
+
+        function ladderAtPos(x, y) {
+            for (const L of LADDERS) {
+                if (Math.abs(L.x - x) < 22 && y >= L.y1 - 8 && y <= L.y2 + 8) return L;
+            }
+            return null;
+        }
+
+        // ── game state ──
+        const STATE = {
+            TITLE: 0,
+            PLAY: 1,
+            WIN: 2,
+            GAMEOVER: 3
+        };
+
+        let G = {};
+        let keys = {};
+
+        function resetGame() {
+            G = {
+                state: STATE.PLAY,
+                score: 0,
+                highScore: 0,
+                lives: 3,
+                bonus: 5000,
+                bonusTimer: 0,
+                bonusInterval: null,
+                frame: 0,
+                // Mario
+                mario: {
+                    x: 80,
+                    y: 502,
+                    vx: 0,
+                    vy: 0,
+                    w: 18,
+                    h: 26,
+                    onGround: true,
+                    onLadder: false,
+                    ladder: null,
+                    climbing: false,
+                    facing: 1,
+                    jumping: false,
+                    jumpTimer: 0,
+                    hasHammer: false,
+                    hammerTimer: 0,
+                    alive: true,
+                    onPlatform: true,
+                    platform: 0,
+                    animFrame: 0,
+                    animTick: 0
+                },
+                // barrels
+                barrels: [],
+                barrelTimer: 0,
+                barrelInterval: 90,
+                // DK
+                dk: { x: 70, y: 130, animFrame: 0, throwTimer: 0 },
+                // Pauline
+                pauline: { x: 700, y: 48, saved: false },
+                // hammer
+                hammer: {
+                    active: true,
+                    x: 380,
+                    y: 0,
+                    platform: 1,
+                    collected: false,
+                    respawnTimer: 0
+                },
+                // particles / effects
+                particles: [],
+                screenShake: 0,
+                jumpPressed: false,
+                climbDir: 0,
+                moveDir: 0,
+                winFlag: false,
+                gameOverFlag: false,
+                restartTimer: 0,
+                bonusCountdown: 5000,
+                bonusTicking: true,
+                lastBarrelSpawn: 0
+            };
+            // init hammer y
+            const plat = PLATFORMS[G.hammer.platform];
+            G.hammer.y = platY(plat, G.hammer.x) - 18;
+        }
+
+        // ── barrel logic ──
+        function spawnBarrel() {
+            if (G.state !== STATE.PLAY) return;
+            const b = {
+                x: 80,
+                y: 130,
+                vx: 1.8,
+                vy: 0,
+                w: 16,
+                h: 16,
+                platform: 3,
+                onPlatform: true,
+                onLadder: false,
+                ladder: null,
+                alive: true,
+                smashed: false,
+                rolling: true,
+                downDir: 0,
+                animFrame: 0,
+                animTick: 0,
+                type: 'barrel',
+                skipLadder: Math.random() < 0.35
+            };
+            // place on top platform
+            const plat = PLATFORMS[3];
+            b.y = platY(plat, b.x) - 8;
+            b.platform = 3;
+            G.barrels.push(b);
+        }
+
+        function updateBarrels() {
+            const toRemove = [];
+            for (let i = 0; i < G.barrels.length; i++) {
+                const b = G.barrels[i];
+                if (!b.alive) { toRemove.push(i); continue; }
+                if (b.smashed) {
+                    b.alive = false;
+                    toRemove.push(i);
+                    for (let k = 0; k < 12; k++) {
+                        G.particles.push({
+                            x: b.x + 8,
+                            y: b.y + 8,
+                            vx: rand(-3, 3),
+                            vy: rand(-4,                         vy: rand(-4, 4),
+                        life: 30,
+                        color: '#a00',
+                        size: 3
+                    });
+                }
+                continue;
+            }
+            // ── barrel physics ──
+            const b = G.barrels[i];
+            // gravity
+            b.vy += 0.4;
+            b.x += b.vx;
+            b.y += b.vy;
+
+            // platform collision
+            const plat = PLATFORMS[b.platform];
+            if (plat) {
+                const top = platY(plat, b.x);
+                if (b.y + b.h >= top && b.vy > 0) {
+                    b.y = top - b.h;
+                    b.vy = 0;
+                    b.onPlatform = true;
+                } else {
+                    b.onPlatform = false;
+                }
+            }
+
+            // check for ladders
+            b.onLadder = false;
+            for (let j = 0; j < LADDERS.length; j++) {
+                const lad = LADDERS[j];
+                if (b.x + b.w > lad.x && b.x < lad.x + lad.w) {
+                    if (b.y + b.h >= lad.y && b.y + b.h <= lad.y + lad.h + 5) {
+                        b.onLadder = true;
+                        b.ladder = j;
+                        // randomly decide to go down ladder
+                        if (!b.skipLadder && Math.random() < 0.02) {
+                            b.vy = 2;
+                        } else if (b.vy === 0 && Math.random() < 0.01) {
+                            // maybe continue straight
+                            b.vx *= -1;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // fall off edge
+            if (b.onPlatform && plat && b.x < plat.x || b.x + b.w > plat.x + plat.w) {
+                b.onPlatform = false;
+                b.platform = Math.max(0, b.platform - 1);
+            }
+
+            // kill if off screen
+            if (b.y > canvas.height + 30) {
+                b.alive = false;
+                toRemove.push(i);
+                continue;
+            }
+
+            // anim
+            b.animTick++;
+            if (b.animTick > 8) {
+                b.animFrame = (b.animFrame + 1) % 2;
+                b.animTick = 0;
+            }
+        }
+        // remove dead
+        for (let i = toRemove.length - 1; i >= 0; i--) {
+            G.barrels.splice(toRemove[i], 1);
+        }
+    }
+
+    // ── game loop ──
+    function update() {
+        if (G.state !== STATE.PLAY) return;
+        updatePlayer();
+        updateBarrels();
+        updateParticles();
+        // spawn barrels periodically
+        if (G.frame % 180 === 0 && G.barrels.length < 5) {
+            spawnBarrel();
+        }
+        G.frame++;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawPlatforms();
+        drawLadders();
+        drawBarrels();
+        drawPlayer();
+        drawHammer();
+        drawParticles();
+        drawHUD();
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // ── init ──
+    function init() {
+        G = { ... };
+        // ... (rest of init, already present)
+        gameLoop();
+    }
+
+    // start
+    window.onload = init;
+</script>
+</body>
+</html>

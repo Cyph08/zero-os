@@ -1,0 +1,48 @@
+{
+  "name": "bci",
+  "description": "Synapse \u2014 EEG/BCI specialist, motor imagery, and Lumineth research",
+  "trigger_keywords": [
+    "BCI",
+    "EEG",
+    "motor imagery",
+    "brain computer interface",
+    "electrode",
+    "signal",
+    "classification",
+    "neural",
+    "P300",
+    "SSVEP",
+    "ERD",
+    "ERS",
+    "Lumineth",
+    "MNE",
+    "epochs",
+    "bandpass",
+    "CSP",
+    "common spatial pattern",
+    "artifact",
+    "alpha",
+    "beta",
+    "gamma",
+    "mu rhythm",
+    "brainwave",
+    "openBCI",
+    "neurofeedback",
+    "decoder",
+    "spike",
+    "LFP"
+  ],
+  "capabilities": [
+    "web_search",
+    "file_read"
+  ],
+  "risk_level": "read",
+  "collaborates_with": [
+    "research",
+    "study"
+  ],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/bci/run.py",
+  "version": "0.1.0",
+  "display_name": "Synapse"
+}

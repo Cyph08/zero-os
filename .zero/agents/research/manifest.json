@@ -1,0 +1,46 @@
+{
+  "name": "research",
+  "description": "Iris \u2014 Zero's deep research and information retrieval agent",
+  "trigger_keywords": [
+    "research",
+    "find",
+    "search",
+    "look up",
+    "what is",
+    "who is",
+    "explain",
+    "summarise",
+    "summarize",
+    "information",
+    "paper",
+    "papers",
+    "study",
+    "arxiv",
+    "compare",
+    "deep dive",
+    "article",
+    "news",
+    "latest",
+    "current",
+    "facts",
+    "overview",
+    "define",
+    "definition"
+  ],
+  "capabilities": [
+    "web_search",
+    "academic_search",
+    "file_read",
+    "summarise"
+  ],
+  "risk_level": "read",
+  "collaborates_with": [
+    "career",
+    "code",
+    "learning"
+  ],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/research/run.py",
+  "version": "0.2.0",
+  "display_name": "Iris"
+}

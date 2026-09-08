@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Boss</title>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: #0d0d1a;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: #1a1a2e;
+            border-radius: 24px;
+            padding: 28px 32px 24px;
+            max-width: 620px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 255, 136, 0.08);
+            border: 1px solid #2a2a4a;
+            transition: border-color 0.3s, box-shadow 0.15s;
+        }
+        .container.boss-active {
+            border-color: #ff333388;
+        }
+        .container.boss-defeated {
+            border-color: #ffd70088;
+        }
+        .container.shake {
+            animation: shake 0.25s ease-in-out;
+        }
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            20% { transform: translateX(-6px); }
+            40% { transform: translateX(6px); }
+            60% { transform: translateX(-4px); }
+            80% { transform: translateX(4px); }
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+        }
+        .title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #00ff88, #00cc7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .title .snake-icon {
+            font-size: 26px;
+            -webkit-text-fill-color: initial;
+        }
+
+        .stats {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            font-size: 15px;
+            font-weight: 500;
+            color: #c8d6e5;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #23234a;
+            padding: 4px 14px 4px 12px;
+            border-radius: 40px;
+            border: 1px solid #2f2f5a;
+            height: 34px;
+        }
+        .stat-item .label {
+            color: #8899b0;
+            font-weight: 400;
+            font-size: 13px;
+        }
+        .stat-item .value {
+            color: #fff;
+            font-weight: 600;
+            font-size: 16px;
+            min-width: 24px;
+            text-align: center;
+        }
+        .stat-item .value.high {
+            color: #ffd700;
+        }
+        .lives-display {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            font-size: 20px;
+            letter-spacing: 2px;
+            padding: 0 6px;
+            height: 34px;
+            background: #23234a;
+            border-radius: 40px;
+            border: 1px solid #2f2f5a;
+            padding: 0 14px;
+        }
+        .lives-display .heart {
+            transition: all 0.3s;
+        }
+        .lives-display .heart.lost {
+            opacity: 0.2;
+            filter: grayscale(1);
+            transform: scale(0.85);
+        }
+
+        .game-wrapper {
+            position: relative;
+            margin-top: 8px;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #0a0a18;
+            border: 2px solid #2a2a4e;
+            box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.6);
+        }
+        .game-wrapper canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1/1;
+            background: #0d0d20;
+            cursor: default;
+            image-rendering: pixelated;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.78);
+            backdrop-filter: blur(4px);
+            border-radius: 14px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+            z-index: 10;
+            padding: 30px;
+        }
+        .overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .overlay h2 {
+            font-size: 36px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 6px;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+        }
+        .overlay .sub {
+            font-size: 18px;
+            color: #c8d6e5;
+            margin-bottom: 18px;
+            font-weight: 400;
+        }
+        .overlay .final-score {
+            font-size: 22px;
+            color: #ffd700;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .overlay .btn {
+            background: #00ff88;
+            color: #0d0d1a;
+            border: none;
+            padding: 12px 40px;
+            border-radius: 60px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
+            letter-spacing: 0.3px;
+        }
+        .overlay .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 30px rgba(0, 255, 136, 0.5);
+            background: #1aff99;
+        }
+        .overlay .btn:active {
+            transform: scale(0.96);
+        }
+
+        .overlay.boss-msg h2 {
+            color: #ffd700;
+            font-size: 38px;
+            text-shadow: 0 0 40px rgba(255, 215, 0, 0.4);
+        }
+        .overlay.boss-msg .sub {
+            color: #ffdd99;
+            font-size: 16px;
+        }
+
+        /* Red flash overlay */
+        .flash-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 0, 0, 0.35);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.08s;
+            border-radius: 14px;
+            z-index: 5;
+        }
+        .flash-overlay.active {
+            opacity: 1;
+        }
+
+        .controls-hint {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            margin-top: 14px;
+            color: #5a6a8a;
+            font-size: 14px;
+            font-weight: 400;
+            flex-wrap: wrap;
+        }
+        .controls-hint kbd {
+            background: #23234a;
+            padding: 2px 10px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 13px;
+            color: #b0c4de;
+            border: 1px solid #3a3a6a;
+            border-bottom-width: 2px;
+        }
+        .controls-hint .divider {
+            color: #3a3a5a;
+        }
+
+        .boss-indicator {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #ff6666;
+            background: #2a1a1a;
+            padding: 4px 16px 4px 12px;
+            border-radius: 40px;
+            border: 1px solid #ff333355;
+            height: 34px;
+            margin-left: auto;
+        }
+        .boss-indicator.visible {
+            display: flex;
+        }
+        .boss-indicator .hp-bar {
+            display: flex;
+            gap: 4px;
+            margin-left: 4px;
+        }
+        .boss-indicator .hp-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff3333;
+            box-shadow: 0 0 8px #ff333388;
+            transition: all 0.3s;
+        }
+        .boss-indicator .hp-dot.empty {
+            background: #3a1a1a;
+            box-shadow: none;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            min-height: 36px;
+        }
+
+        @media (max-width: 580px) {
+            .container {
+                padding: 16px 14px 18px;
+                border-radius: 16px;
+            }
+            .title h1 {
+                font-size: 20px;
+            }
+            .stats {
+                gap: 8px;
+                font-size: 13px;
+            }
+            .stat-item {
+                padding: 2px 10px 2px 8px;
+                height: 30px;
+                font-size: 12px;
+            }
+            .stat-item .value {
+                font-size: 14px;
+                min-width: 18px;
+            }
+            .lives-display {
+                height: 30px;
+                font-size: 16px;
+                padding: 0 10px;
+            }
+            .overlay h2 {
+                font-size: 28px;
+            }
+            .overlay .btn {
+                padding: 10px 30px;
+                font-size: 16px;
+            }
+            .controls-hint {
+                font-size: 12px;
+                gap: 10px;
+            }
+            .controls-hint kbd {
+                padding: 1px 8px;
+                font-size: 11px;
+            }
+            .boss-indicator {
+                font-size: 12px;
+                height: 30px;
+                padding: 2px 12px 2px 8px;
+            }
+            .boss-indicator .hp-dot {
+                width: 8px;
+                height: 8px;
+            }
+        }
+        @media (max-width: 420px) {
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 6px;
+            }
+            .stats {
+                justify-content: center;
+            }
+            .boss-indicator {
+                margin-left: 0;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="container">
+        <div class="header">
+            <div class="title">
+                <span class="snake-icon">🐍</span>
+                <h1>Snake Boss</h1>
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="label">Score</span>
+                    <span class="value" id="scoreDisplay">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="label">Best</span>
+                    <span class="value high" id="highScoreDisplay">0</span>
+                </div>
+                <div class="lives-display" id="livesDisplay">
+                    <span class="heart" id="heart1">❤️</span>
+                    <span class="heart" id="heart2">❤️</span>
+                    <span class="heart" id="heart3">❤️</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-wrapper" id="gameWrapper">
+            <canvas id="gameCanvas" width="500" height="500"></canvas>
+            <div class="flash-overlay" id="flashOverlay"></div>
+
+            <!-- Game Over overlay -->
+            <div class="overlay" id="gameOverOverlay">
+                <h2>💀 Game Over</h2>
+                <div class="final-score" id="finalScoreDisplay">Score: 0</div>
+                <button class="btn" id="restartBtn">↻ Play Again</button>
+            </div>
+
+            <!-- Boss Defeated overlay (auto-hides) -->
+            <div class="overlay boss-msg" id="bossDefeatedOverlay">
+                <h2>⚔️ BOSS DEFEATED</h2>
+                <div class="sub">The realm is safe… for now.</div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="boss-indicator" id="bossIndicator">
+                <span>👹 Boss</span>
+                <span class="hp-bar" id="bossHPBar">
+                    <span class="hp-dot" id="bossHPDot0"></span>
+                    <span class="hp-dot" id="bossHPDot1"></span>
+                    <span class="hp-dot" id="bossHPDot2"></span>
+                </span>
+            </div>
+        </div>
+
+        <div class="controls-hint">
+            <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd>
+            <span class="divider">·</span>
+            <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>
+            <span class="divider">·</span>
+            <span>no 180° reverse</span>
+            <span class="divider">·</span>
+            <span>100 pts → 👹 Boss appears</span>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            'use strict';
+
+            // ─── DOM refs ───────────────────────────────────────────────
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            const highScoreDisplay = document.getElementById('highScoreDisplay');
+            const container = document.getElementById('container');
+            const gameWrapper = document.getElementById('gameWrapper');
+            const flashOverlay = document.getElementById('flashOverlay');
+            const bossIndicator = document.getElementById('bossIndicator');
+            const gameOverOverlay = document.getElementById('gameOverOverlay');
+            const bossDefeatedOverlay = document.getElementById('bossDefeatedOverlay');
+            const finalScoreDisplay = document.getElementById('finalScoreDisplay');
+            const restartBtn = document.getElementById('restartBtn');
+
+            // ─── Game constants ─────────────────────────────────────────
+            const TILE_COUNT = 20;
+            const GRID_SIZE = canvas.width / TILE_COUNT;
+            const INITIAL_SPEED = 180; // ms per frame
+            const BOSS_HP_MAX = 3;
+            const BOSS_SPAWN_SCORE = 100;
+
+            // ─── Game state ─────────────────────────────────────────────
+            let snake = [];
+            let direction = { x: 1, y: 0 };
+            let nextDirection = { x: 1, y: 0 };
+            let food = { x: 10, y: 10 };
+            let score = 0;
+            let highScore = 0;
+            let lives = 3;
+            let gameOver = false;
+            let gameRunning = false;
+            let gameLoopId = null;
+            let bossActive = false;
+            let boss = {
+                x: 0, y: 0,
+                weakX: 1, weakY: 1,
+                hp: 0,
+                moveCounter: 0,
+                moveInterval: 4
+            };
+            let bossSpawned = false;
+            let bossDefeatTimer = null;
+
+            // ─── Load high score ────────────────────────────────────────
+            try {
+                const saved = localStorage.getItem('snakeBossHighScore');
+                if (saved !== null) {
+                    highScore = parseInt(saved, 10) || 0;
+                }
+            } catch (e) {
+                // localStorage unavailable
+            }
+            highScoreDisplay.textContent = highScore;
+
+            // ─── Utility ───────────────────────────────────────────────
+            function randomTile() {
+                return Math.floor(Math.random() * TILE_COUNT);
+            }
+
+            function isOnBoss(px, py) {
+                if (!bossActive) return false;
+                const size = 3;
+                return px >= boss.x && px < boss.x + size &&
+                       py >= boss.y && py < boss.y + size;
+            }
+
+            function isWeakPoint(px, py) {
+                if (!bossActive) return false;
+                return px === boss.x + boss.weakX && py === boss.y + boss.weakY;
+            }
+
+            function randomWeakPoint() {
+                let wx, wy;
+                do {
+                    wx = Math.floor(Math.random() * 3);
+                    wy = Math.floor(Math.random() * 3);
+                } while (wx === boss.weakX && wy === boss.weakY);
+                boss.weakX = wx;
+                boss.weakY = wy;
+            }
+
+            function randomFood() {
+                let pos;
+                let attempts = 0;
+                do {
+                    pos = { x: randomTile(), y: randomTile() };
+                    attempts++;
+                } while (
+                    snake.some(s => s.x === pos.x && s.y === pos.y) ||
+                    isOnBoss(pos.x, pos.y) ||
+                    attempts < 100
+                );
+                return pos;
+            }
+
+            // ─── Boss logic ────────────────────────────────────────────
+            function spawnBoss() {
+                const size = 3;
+                let attempts = 0;
+                let bx, by;
+                do {
+                    bx = Math.floor(Math.random() * (TILE_COUNT - size + 1));
+                    by = Math.floor(Math.random() * (TILE_COUNT - size + 1));
+                    attempts++;
+                } while (
+                    snake.some(s => s.x >= bx && s.x < bx + size && s.y >= by && s.y < by + size) ||
+                    (food.x >= bx && food.x < bx + size && food.y >= by && food.y < by + size) ||
+                    attempts < 100
+                );
+                boss.x = bx;
+                boss.y = by;
+                boss.hp = BOSS_HP_MAX;
+                boss.weakX = 1;
+                boss.weakY = 1;
+                boss.moveCounter = 0;
+                boss.moveInterval = 4;
+                bossActive = true;
+                bossSpawned = true;
+                bossIndicator.classList.add('visible');
+                container.classList.add('boss-active');
+                updateBossHP();
+                // Make sure food is not on boss
+                if (isOnBoss(food.x, food.y)) {
+                    food = randomFood();
+                }
+            }
+
+            function damageBoss() {
+                boss.hp--;
+                if (boss.hp <= 0) {
+                    bossActive = false;
+                    boss.hp = 0;
+                    bossIndicator.classList.remove('visible');
+                    container.classList.remove('boss-active');
+                    container.classList.add('boss-defeated');
+                    updateBossHP();
+                    showBossDefeated();
+                    // Spawn food somewhere safe
+                    food = randomFood();
+                } else {
+                    randomWeakPoint();
+                    if (boss.moveInterval > 1) {
+                        boss.moveInterval--;
+                    }
+                    updateBossHP();
+                    triggerFlashAndShake();
+                }
+            }
+
+            function updateBossHP() {
+                for (let i = 0; i < BOSS_HP_MAX; i++) {
+                    const dot = document.getElementById('bossHPDot' + i);
+                    if (dot) {
+                        dot.classList.toggle('empty', i >= boss.hp);
+                    }
+                }
+            }
+
+            function showBossDefeated() {
+                if (bossDefeatTimer) {
+                    clearTimeout(bossDefeatTimer);
+                    bossDefeatTimer = null;
+                }
+                bossDefeatedOverlay.classList.add('visible');
+                bossDefeatTimer = setTimeout(() => {
+                    bossDefeatedOverlay.classList.remove('visible');
+                    container.classList.remove('boss-defeated');
+                    bossDefeatTimer = null;
+                }, 2200);
+            }
+
+            // ─── Screen effects ────────────────────────────────────────
+            function triggerFlashAndShake() {
+                flashOverlay.classList.add('active');
+                setTimeout(() => flashOverlay.classList.remove('active'), 120);
+
+                container.classList.remove('shake');
+                void container.offsetWidth;
+                container.classList.add('shake');
+                setTimeout(() => container.classList.remove('shake'), 300);
+            }
+
+            // ─── Core game logic ───────────────────────────────────────
+            function update() {
+                if (gameOver || !gameRunning) return;
+
+                // Apply queued direction (no 180° reverse)
+                if ((nextDirection.x !== 0 || nextDirection.y !== 0) &&
+                    (direction.x !== -nextDirection.x || direction.y !== -nextDirection.y)) {
+                    direction = { x: nextDirection.x, y: nextDirection.y };
+                }
+
+                // Calculate new head
+                const head = snake[0];
+                const newHead = {
+                    x: head.x + direction.x,
+                    y: head.y + direction.y
+                };
+
+                // Check wall collision
+                if (newHead.x < 0 || newHead.x >= TILE_COUNT || newHead.y < 0 || newHead.y >= TILE_COUNT) {
+                    loseLife();
+                    return;
+                }
+
+                // Check self collision
+                if (snake.some(s => s.x === newHead.x && s.y === newHead.y)) {
+                    loseLife();
+                    return;
+                }
+
+                // Check boss collision (if boss active)
+                if (bossActive && isOnBoss(newHead.x, newHead.y)) {
+                    // Check if it's the weak point
+                    if (isWeakPoint(newHead.x, newHead.y)) {
+                        // Hit weak point → damage boss
+                        damageBoss();
+                        // Snake still moves but doesn't eat food this turn
+                        snake.unshift(newHead);
+                        snake.pop();
+                        // Don't grow, don't add score
+                        draw();
+                        return;
+                    } else {
+                        // Hit boss body → lose life
+                        loseLife();
+                        return;
+                    }
+                }
+
+                // Move snake
+                snake.unshift(newHead);
+
+                // Check food
+                if (newHead.x === food.x && newHead.y === food.y) {
+                    score += 10;
+                    updateScoreUI();
+                    // Grow: don't pop tail
+                    food = randomFood();
+
+                    // Check boss spawn condition
+                    if (!bossSpawned && score >= BOSS_SPAWN_SCORE) {
+                        spawnBoss();
+                    }
+                } else {
+                    snake.pop();
+                }
+
+                // Boss movement (every moveInterval steps)
+                if (bossActive) {
+                    boss.moveCounter++;
+                    if (boss.moveCounter >= boss.moveInterval) {
+                        boss.moveCounter = 0;
+                        // Move boss randomly (1 tile in a random direction, staying in bounds)
+                        const dirs = [
+                            { x: 0, y: 1 },
+                            { x: 0, y: -1 },
+                            { x: 1, y: 0 },
+                            { x: -1, y: 0 }
+                        ];
+                        const shuffled = dirs.sort(() => Math.random() - 0.5);
+                        const size = 3;
+                        for (const d of shuffled) {
+                            const nx = boss.x + d.x;
+                            const ny = boss.y + d.y;
+                            if (nx >= 0 && nx + size <= TILE_COUNT && ny >= 0 && ny + size <= TILE_COUNT) {
+                                // Check not overlapping snake head
+                                const head = snake[0];
+                                if (!(head.x >= nx && head.x < nx + size && head.y >= ny && head.y < ny + size)) {
+                                    boss.x = nx;
+                                    boss.y = ny;
+                                    break;
+                                }
+                            }
+                        }
+                        // Ensure food not on boss
+                        if (isOnBoss(food.x, food.y)) {
+                            food = randomFood();
+                        }
+                    }
+                }
+
+                draw();
+            }
+
+            function loseLife() {
+                lives--;
+                updateLivesUI();
+                triggerFlashAndShake();
+
+                if (lives <= 0) {
+                    gameOver = true;
+                    gameRunning = false;
+                    if (gameLoopId) {
+                        clearInterval(gameLoopId);
+                        gameLoopId = null;
+                    }
+                    // Update high score
+                    if (score > highScore) {
+                        highScore = score;
+                        highScoreDisplay.textContent = highScore;
+                        try {
+                            localStorage.setItem('snakeBossHighScore', highScore.toString());
+                        } catch (e) {}
+                    }
+                    finalScoreDisplay.textContent = 'Score: ' + score;
+                    gameOverOverlay.classList.add('visible');
+                    draw();
+                    return;
+                }
+
+                // Reset snake position (not game over)
+                resetSnakePosition();
+                draw();
+            }
+
+            function resetSnakePosition() {
+                // Place snake at a safe spot away from boss and edges
+                let startX, startY;
+                let attempts = 0;
+                do {
+                    startX = Math.floor(Math.random() * (TILE_COUNT - 4)) + 2;
+                    startY = Math.floor(Math.random() * (TILE_COUNT - 4)) + 2;
+                    attempts++;
+                } while (isOnBoss(startX, startY) && attempts < 50);
+
+                snake = [
+                    { x: startX, y: startY },
+                    { x: startX - 1, y: startY },
+                    { x: startX - 2, y: startY }
+                ];
+                direction = { x: 1, y: 0 };
+                nextDirection = { x: 1, y: 0 };
+            }
+
+            function updateScoreUI() {
+                scoreDisplay.textContent = score;
+                if (score > highScore) {
+                    highScore = score;
+                    highScoreDisplay.textContent = highScore;
+                    try {
+                        localStorage.setItem('snakeBossHighScore', highScore.toString());
+                    } catch (e) {}
+                }
+            }
+
+            function updateLivesUI() {
+                for (let i = 1; i <= 3; i++) {
+                    const heart = document.getElementById('heart' + i);
+                    if (heart) {
+                        heart.classList.toggle('lost', i > lives);
+                    }
+                }
+            }
+
+            // ─── Drawing ───────────────────────────────────────────────
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Background
+                ctx.fillStyle = '#0d0d20';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Grid (subtle)
+                ctx.strokeStyle = '#1a1a3a';
+                ctx.lineWidth = 0.5;
+                for (let i = 0; i <= TILE_COUNT; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(i * GRID_SIZE, 0);
+                    ctx.lineTo(i * GRID_SIZE, canvas.height);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(0, i * GRID_SIZE);
+                    ctx.lineTo(canvas.width, i * GRID_SIZE);
+                    ctx.stroke();
+                }
+
+                // Food
+                ctx.fillStyle = '#ff4466';
+                ctx.shadowColor = '#ff446688';
+                ctx.shadowBlur = 12;
+                const fx = food.x * GRID_SIZE + GRID_SIZE / 2;
+                const fy = food.y * GRID_SIZE + GRID_SIZE / 2;
+                ctx.beginPath();
+                ctx.arc(fx, fy, GRID_SIZE / 2 - 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Boss
+                if (bossActive) {
+                    const size = 3 * GRID_SIZE;
+                    // Boss body
+                    ctx.fillStyle = '#aa2222';
+                    ctx.shadowColor = '#ff000088';
+                    ctx.shadowBlur = 20;
+                    ctx.fillRect(boss.x * GRID_SIZE, boss.y * GRID_SIZE, size, size);
+                    ctx.shadowBlur = 0;
+
+                    // Boss weak point (glowing)
+                    const wpx = (boss.x + boss.weakX) * GRID_SIZE + GRID_SIZE / 2;
+                    const wpy = (boss.y + boss.weakY) * GRID_SIZE + GRID_SIZE / 2;
+                    ctx.fillStyle = '#ffd700';
+                    ctx.shadowColor = '#ffd70088';
+                    ctx.shadowBlur = 24;
+                    ctx.beginPath();
+                    ctx.arc(wpx, wpy, GRID_SIZE / 2 - 1, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Boss border
+                    ctx.strokeStyle = '#ff333388';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(boss.x * GRID_SIZE, boss.y * GRID_SIZE, size, size);
+                }
+
+                // Snake
+                for (let i = 0; i < snake.length; i++) {
+                    const seg = snake[i];
+                    const x = seg.x * GRID_SIZE;
+                    const y = seg.y * GRID_SIZE;
+                    const pad = 1;
+                    // Gradient head
+                    if (i === 0) {
+                        ctx.fillStyle = '#00ff88';
+                        ctx.shadowColor = '#00ff8866';
+                        ctx.shadowBlur = 16;
+                    } else {
+                        const t = i / snake.length;
+                        const g = Math.floor(200 - t * 80);
+                        ctx.fillStyle = `rgb(0, ${g}, 100)`;
+                        ctx.shadowBlur = 0;
+                    }
+                    ctx.fillRect(x + pad, y + pad, GRID_SIZE - pad * 2, GRID_SIZE - pad * 2);
+                    // Eyes on head
+                    if (i === 0) {
+                        ctx.fillStyle = '#fff';
+                        const cx = x + GRID_SIZE / 2;
+                        const cy = y + GRID_SIZE / 2;
+                        const eyeR = 3;
+                        const offset = 5;
+                        let ex1, ey1, ex2, ey2;
+                        if (direction.x === 1) {
+                            ex1 = cx + offset; ey1 = cy - offset;
+                            ex2 = cx + offset; ey2 = cy + offset;
+                        } else if (direction.x === -1) {
+                            ex1 = cx - offset; ey1 = cy - offset;
+                            ex2 = cx - offset; ey2 = cy + offset;
+                        } else if (direction.y === 1) {
+                            ex1 = cx - offset; ey1 = cy + offset;
+                            ex2 = cx + offset; ey2 = cy + offset;
+                        } else {
+                            ex1 = cx - offset; ey1 = cy - offset;
+                            ex2 = cx + offset; ey2 = cy - offset;
+                        }
+                        ctx.shadowBlur = 0;
+                        ctx.beginPath();
+                        ctx.arc(ex1, ey1, eyeR, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(ex2, ey2, eyeR, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.fillStyle = '#111';
+                        ctx.beginPath();
+                        ctx.arc(ex1, ey1, 1.5, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(ex2, ey2, 1.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+                ctx.shadowBlur = 0;
+            }
+
+            // ─── Game control ───────────────────────────────────────────
+            function startGame() {
+                // Reset everything
+                if (gameLoopId) {
+                    clearInterval(gameLoopId);
+                    gameLoopId = null;
+                }
+                if (bossDefeatTimer) {
+                    clearTimeout(bossDefeatTimer);
+                    bossDefeatTimer = null;
+                }
+
+                gameOver = false;
+                gameRunning = true;
+                lives = 3;
+                score = 0;
+                bossActive = false;
+                bossSpawned = false;
+                boss.hp = 0;
+
+                // Reset snake
+                snake = [
+                    { x: 10, y: 10 },
+                    { x: 9, y: 10 },
+                    { x: 8, y: 10 }
+                ];
+                direction = { x: 1, y: 0 };
+                nextDirection = { x: 1, y: 0 };
+
+                // Reset UI
+                scoreDisplay.textContent = '0';
+                updateLivesUI();
+                bossIndicator.classList.remove('visible');
+                container.classList.remove('boss-active', 'boss-defeated');
+                gameOverOverlay.classList.remove('visible');
+                bossDefeatedOverlay.classList.remove('visible');
+                flashOverlay.classList.remove('active');
+
+                // Place food
+                food = randomFood();
+
+                draw();
+
+                // Start loop
+                if (gameLoopId) clearInterval(gameLoopId);
+                gameLoopId = setInterval(update, INITIAL_SPEED);
+            }
+
+            // ─── Input handling ─────────────────────────────────────────
+            function handleKey(e) {
+                const key = e.key;
+                // Prevent page scroll
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(key)) {
+                    e.preventDefault();
+                }
+
+                if (!gameRunning || gameOver) return;
+
+                let newDir = null;
+                switch (key) {
+                    case 'ArrowUp':
+                    case 'w':
+                    case 'W':
+                        newDir = { x: 0, y: -1 };
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                    case 'S':
+                        newDir = { x: 0, y: 1 };
+                        break;
+                    case 'ArrowLeft':
+                    case 'a':
+                    case 'A':
+                        newDir = { x: -1, y: 0 };
+                        break                    case 'ArrowRight':
+                    case 'd':
+                    case 'D':
+                        newDir = { x: 1, y: 0 };
+                        break;
+                    case ' ':
+                        if (gameOver) {
+                            resetGame();
+                        }
+                        break;
+                }
+
+                if (newDir && (snake.length === 1 || newDir.x !== -direction.x || newDir.y !== -direction.y)) {
+                    direction = newDir;
+                }
+            }
+
+            // ─── Add event listeners ────────────────────────────────────
+            document.addEventListener('keydown', handleKey);
+
+            // ─── Touch / Swipe support ──────────────────────────────────
+            let touchStartX = 0, touchStartY = 0;
+            container.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                touchStartX = touch.clientX;
+                touchStartY = touch.clientY;
+            });
+            container.addEventListener('touchmove', (e) => e.preventDefault());
+            container.addEventListener('touchend', (e) => {
+                if (!gameRunning || gameOver) return;
+                const touch = e.changedTouches[0];
+                const dx = touch.clientX - touchStartX;
+                const dy = touch.clientY - touchStartY;
+                const absDx = Math.abs(dx);
+                const absDy = Math.abs(dy);
+                if (absDx > absDy && absDx > 20) {
+                    handleKey({ key: dx > 0 ? 'ArrowRight' : 'ArrowLeft' });
+                } else if (absDy > 20) {
+                    handleKey({ key: dy > 0 ? 'ArrowDown' : 'ArrowUp' });
+                }
+            });
+
+            // ─── Start the game ──────────────────────────────────────────
+            resetGame();
+
+        </script>
+    </body>
+    </html>

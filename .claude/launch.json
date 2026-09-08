@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "zero-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", ".zero/ui"],
+      "port": 5173
+    },
+    {
+      "name": "status-panel",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "4242", "--directory", "K:\\Zero"],
+      "port": 4242,
+      "autoPort": false
+    }
+  ]
+}

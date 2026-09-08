@@ -1,0 +1,35 @@
+{
+  "name": "schedule",
+  "description": "Chrono \u2014 schedule management, time-keeping, and calendar planning",
+  "trigger_keywords": [
+    "schedule",
+    "calendar",
+    "remind",
+    "reminder",
+    "meeting",
+    "plan my day",
+    "when",
+    "deadline",
+    "appointment",
+    "time",
+    "today",
+    "tomorrow",
+    "week",
+    "agenda"
+  ],
+  "capabilities": [
+    "file_read",
+    "file_write",
+    "calendar_read",
+    "calendar_write"
+  ],
+  "risk_level": "write",
+  "collaborates_with": [
+    "research",
+    "career"
+  ],
+  "model_preference": "claude-haiku",
+  "entry_point": "agents/schedule/run.py",
+  "version": "0.1.0",
+  "display_name": "Chrono"
+}

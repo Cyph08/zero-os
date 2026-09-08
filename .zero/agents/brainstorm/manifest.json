@@ -1,0 +1,38 @@
+{
+  "name": "brainstorm",
+  "description": "Spark \u2014 idea structuring, MVP planning, and product thinking",
+  "trigger_keywords": [
+    "brainstorm",
+    "ideas",
+    "idea",
+    "plan",
+    "think",
+    "feature",
+    "concept",
+    "design",
+    "architect",
+    "propose",
+    "what if",
+    "how should",
+    "structure",
+    "outline",
+    "roadmap",
+    "strategy",
+    "vision",
+    "build",
+    "create"
+  ],
+  "capabilities": [
+    "file_read",
+    "code_run"
+  ],
+  "risk_level": "read",
+  "collaborates_with": [
+    "research",
+    "code"
+  ],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/brainstorm/run.py",
+  "version": "0.1.0",
+  "display_name": "Spark"
+}

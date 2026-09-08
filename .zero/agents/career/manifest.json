@@ -1,0 +1,37 @@
+{
+  "name": "career",
+  "description": "Maven \u2014 career navigation, CV, job applications, and strategy",
+  "trigger_keywords": [
+    "cv",
+    "resume",
+    "job",
+    "apply",
+    "application",
+    "linkedin",
+    "career",
+    "interview",
+    "cover letter",
+    "internship",
+    "graduate",
+    "placement",
+    "hire",
+    "opportunity",
+    "role",
+    "position"
+  ],
+  "capabilities": [
+    "file_read",
+    "file_write",
+    "web_search",
+    "email_draft"
+  ],
+  "risk_level": "high",
+  "collaborates_with": [
+    "research",
+    "comms"
+  ],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/career/run.py",
+  "version": "0.1.0",
+  "display_name": "Maven"
+}

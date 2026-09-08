@@ -1,0 +1,46 @@
+{
+  "name": "study",
+  "description": "Sage \u2014 MSc AI coursework, paper summaries, and deep explanations",
+  "trigger_keywords": [
+    "study",
+    "learn",
+    "explain",
+    "revision",
+    "exam",
+    "lecture",
+    "concept",
+    "understand",
+    "course",
+    "module",
+    "university",
+    "MSc",
+    "paper",
+    "summarise paper",
+    "summarize paper",
+    "teach me",
+    "how does",
+    "what is",
+    "transformer",
+    "reinforcement learning",
+    "neural network",
+    "backprop",
+    "gradient",
+    "attention",
+    "flashcard",
+    "quiz",
+    "assignment"
+  ],
+  "capabilities": [
+    "web_search",
+    "file_read"
+  ],
+  "risk_level": "read",
+  "collaborates_with": [
+    "research",
+    "bci"
+  ],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/study/run.py",
+  "version": "0.1.0",
+  "display_name": "Sage"
+}

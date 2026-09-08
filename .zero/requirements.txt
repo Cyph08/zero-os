@@ -1,0 +1,66 @@
+# Zero OS — Python Dependencies
+# Install with: uv pip install -r requirements.txt
+# Python 3.11+ required
+
+# ── Core ─────────────────────────────────────────────────
+fastapi>=0.111.0           # REST + MCP backend
+uvicorn[standard]>=0.29.0  # ASGI server
+python-dotenv>=1.0.0       # .env file loader
+pydantic>=2.7.0            # Data validation (FastAPI uses this)
+
+# ── MCP ──────────────────────────────────────────────────
+mcp>=1.0.0                 # Python MCP SDK (StreamableHTTP transport)
+
+# ── Agent orchestration ───────────────────────────────────
+langgraph>=0.1.0           # Agent graph framework (Phase 4+)
+
+# ── Registry file watcher ─────────────────────────────────
+watchdog>=4.0.0            # Hot-reload agents on file changes
+
+# ── LLM providers — set ONE key in .env, rest are optional
+anthropic>=0.25.0          # Claude (set ANTHROPIC_API_KEY)
+groq>=0.9.0                # Llama 3.1 via Groq — free tier (set GROQ_API_KEY)
+openai>=1.30.0             # DeepSeek uses OpenAI-compat API (set DEEPSEEK_API_KEY)
+httpx>=0.27.0              # Ollama local calls + page fetching
+
+# ── Research agent ────────────────────────────────────────
+tavily-python>=0.3.0       # Web search built for AI agents (set TAVILY_API_KEY)
+beautifulsoup4>=4.12.0     # HTML parsing for manual page fetch fallback
+lxml>=5.2.0                # Fast HTML parser backend
+
+# ── Voice — STT ───────────────────────────────────────────
+openai-whisper>=20231117   # Local Whisper large-v3 (CUDA, RTX 4050)
+sounddevice>=0.4.6         # Microphone capture
+numpy>=1.26.0              # Audio array processing
+
+# ── Voice — TTS ───────────────────────────────────────────
+edge-tts>=6.1.9            # Microsoft Edge TTS (free, British female, no key)
+elevenlabs>=1.0.0          # Premium TTS (set ELEVENLABS_API_KEY — free tier 10k chars/mo)
+pygame>=2.5.0              # Audio playback on Windows
+
+# ── Voice — Wake word ─────────────────────────────────────
+openwakeword>=0.6.0
+pvrecorder>=1.2.0          # Microphone input for Porcupine
+
+# ── Memory (Phase 2) ──────────────────────────────────────
+chromadb>=0.5.0            # Long-term vector store
+redis>=5.0.0               # Warm cache (recent weeks)
+
+# ── Integrations (Phase 2) ────────────────────────────────
+google-api-python-client>=2.130.0  # Gmail + Calendar API
+google-auth-httplib2>=0.2.0        # Google auth HTTP transport
+google-auth-oauthlib>=1.2.0        # Google OAuth 2.0 flow
+notion-client>=2.2.0               # Notion API (set NOTION_API_KEY)
+
+# ── Visual (Phase 2+) ─────────────────────────────────────
+Pillow>=10.3.0             # Image manipulation
+opencv-python>=4.9.0       # Computer vision
+mss>=9.0.1                 # Screen capture
+pytesseract>=0.3.10        # OCR
+
+# ── Proactive scheduler (Phase 5) ────────────────────────
+apscheduler>=3.10.0        # AsyncIOScheduler with cron/interval/date triggers
+sqlalchemy>=2.0.0          # SQLite job store for APScheduler persistence
+
+# ── LinkedIn agent (Phase 5) ─────────────────────────────
+linkedin-api>=2.1.0        # Unofficial LinkedIn API — cookie-based auth (set LINKEDIN_EMAIL + LINKEDIN_PASSWORD)

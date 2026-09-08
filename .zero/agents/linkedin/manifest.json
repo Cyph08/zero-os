@@ -1,0 +1,33 @@
+{
+  "name": "linkedin",
+  "description": "Nexus \u2014 LinkedIn profile viewing, job search, and connection drafting",
+  "trigger_keywords": [
+    "linkedin",
+    "connection request",
+    "connect on linkedin",
+    "linkedin message",
+    "job search",
+    "linkedin profile",
+    "linkedin jobs",
+    "reach out on linkedin",
+    "linkedin outreach",
+    "networking",
+    "linkedin post",
+    "recruiter"
+  ],
+  "capabilities": [
+    "web_search",
+    "file_read",
+    "email_draft"
+  ],
+  "risk_level": "high",
+  "collaborates_with": [
+    "career",
+    "research",
+    "comms"
+  ],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/linkedin/run.py",
+  "version": "0.1.0",
+  "display_name": "Nexus"
+}

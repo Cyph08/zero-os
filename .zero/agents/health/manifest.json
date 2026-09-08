@@ -1,0 +1,43 @@
+{
+  "name": "health",
+  "description": "Pulse \u2014 daily wellness tracker for gym, sleep, and hydration",
+  "trigger_keywords": [
+    "health",
+    "gym",
+    "workout",
+    "exercise",
+    "sleep",
+    "water",
+    "hydration",
+    "mood",
+    "weight",
+    "nutrition",
+    "tired",
+    "energy",
+    "rest",
+    "run",
+    "training",
+    "log workout",
+    "how am i doing",
+    "streak",
+    "calories",
+    "steps",
+    "recovery",
+    "sick",
+    "feeling",
+    "did gym",
+    "went to gym"
+  ],
+  "capabilities": [
+    "file_read",
+    "file_write"
+  ],
+  "risk_level": "write",
+  "collaborates_with": [
+    "schedule"
+  ],
+  "model_preference": "claude-haiku",
+  "entry_point": "agents/health/run.py",
+  "version": "0.1.0",
+  "display_name": "Pulse"
+}

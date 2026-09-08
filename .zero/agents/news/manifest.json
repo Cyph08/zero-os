@@ -1,0 +1,38 @@
+{
+  "name": "news",
+  "description": "Herald \u2014 world news briefings, AI/tech updates, and BCI research digest",
+  "trigger_keywords": [
+    "news",
+    "headlines",
+    "today",
+    "what's happening",
+    "whats happening",
+    "current events",
+    "briefing",
+    "digest",
+    "update",
+    "latest",
+    "world news",
+    "global",
+    "ai news",
+    "tech news",
+    "research digest",
+    "bci news",
+    "papers",
+    "arxiv",
+    "morning briefing",
+    "daily briefing"
+  ],
+  "capabilities": [
+    "web_search",
+    "file_read"
+  ],
+  "risk_level": "read",
+  "collaborates_with": [
+    "research"
+  ],
+  "model_preference": "claude-haiku",
+  "entry_point": "agents/news/run.py",
+  "version": "0.1.0",
+  "display_name": "Herald"
+}

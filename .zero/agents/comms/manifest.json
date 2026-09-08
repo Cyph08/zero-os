@@ -1,0 +1,40 @@
+{
+  "name": "comms",
+  "description": "Echo \u2014 professional email drafting and outbound communications",
+  "trigger_keywords": [
+    "email",
+    "message",
+    "reply",
+    "contact",
+    "write to",
+    "reach out",
+    "draft",
+    "professor",
+    "supervisor",
+    "respond to",
+    "send to",
+    "follow up",
+    "follow-up",
+    "introduction",
+    "introduce myself",
+    "cold email",
+    "networking",
+    "thank you email",
+    "write an email",
+    "compose",
+    "get back to"
+  ],
+  "capabilities": [
+    "email_draft",
+    "file_read"
+  ],
+  "risk_level": "high",
+  "collaborates_with": [
+    "career",
+    "schedule"
+  ],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/comms/run.py",
+  "version": "0.1.0",
+  "display_name": "Echo"
+}

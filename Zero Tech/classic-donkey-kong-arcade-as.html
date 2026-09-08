@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donkey Kong – 25m</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            image-rendering: pixelated;
+            overflow: hidden;
+            user-select: none;
+        }
+        #game-wrapper {
+            background: #0a0a0a;
+            border: 4px solid #333;
+            border-radius: 12px;
+            padding: 16px 16px 12px 16px;
+            box-shadow: 0 0 60px rgba(200, 30, 30, 0.15), inset 0 0 30px rgba(0, 0, 0, 0.8);
+        }
+        #game-container {
+            position: relative;
+            display: inline-block;
+        }
+        canvas {
+            display: block;
+            width: 800px;
+            height: 640px;
+            border-radius: 6px;
+            background: #000;
+            image-rendering: pixelated;
+            border: 2px solid #222;
+        }
+        #controls {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-top: 10px;
+            padding: 6px 0 2px 0;
+            color: #aaa;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 0.5px;
+            border-top: 1px solid #222;
+        }
+        #controls span {
+            color: #ddd;
+            background: #151515;
+            padding: 2px 12px;
+            border-radius: 4px;
+            border: 1px solid #333;
+        }
+        #controls kbd {
+            display: inline-block;
+            background: #2a2a2a;
+            color: #f0e68c;
+            padding: 0 8px;
+            border-radius: 3px;
+            border: 1px solid #555;
+            font-size: 13px;
+            font-weight: bold;
+            margin: 0 2px;
+        }
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 800px;
+            height: 640px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #overlay.active {
+            pointer-events: auto;
+        }
+        #overlay .title {
+            color: #f8d478;
+            font-size: 56px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            text-shadow: 4px 4px 0 #8b4513, 0 0 40px rgba(200, 100, 0, 0.3);
+            letter-spacing: 6px;
+            margin-bottom: 10px;
+        }
+        #overlay .sub {
+            color: #ccc;
+            font-size: 22px;
+            font-family: 'Courier New', monospace;
+            text-shadow: 2px 2px 0 #333;
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+        }
+        #overlay .btn {
+            font-family: 'Courier New', monospace;
+            font-size: 26px;
+            font-weight: bold;
+            padding: 12px 48px;
+            background: #cc3333;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            pointer-events: auto;
+            box-shadow: 0 4px 0 #771111, 0 8px 20px rgba(0, 0, 0, 0.8);
+            transition: 0.07s;
+            letter-spacing: 2px;
+        }
+        #overlay .btn:hover {
+            background: #dd4444;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #771111, 0 12px 28px rgba(0, 0, 0, 0.9);
+        }
+        #overlay .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 1px 0 #771111;
+        }
+        #overlay .win-title {
+            color: #7cfc00;
+            font-size: 48px;
+            text-shadow: 0 0 40px rgba(124, 252, 0, 0.2);
+        }
+        #overlay .lose-title {
+            color: #ff6347;
+            font-size: 48px;
+            text-shadow: 0 0 40px rgba(255, 99, 71, 0.2);
+        }
+        #overlay .score-display {
+            color: #f0e68c;
+            font-size: 28px;
+            margin: 12px 0 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+        #overlay .info-line {
+            color: #aaa;
+            font-size: 18px;
+            margin-bottom: 18px;
+            font-family: 'Courier New', monospace;
+        }
+        .hidden {
+            display: none !important;
+        }
+        @media (max-width: 840px) {
+            canvas {
+                width: 100%;
+                height: auto;
+                aspect-ratio: 800/640;
+            }
+            #game-wrapper {
+                padding: 8px;
+                border-width: 2px;
+            }
+            #controls {
+                font-size: 12px;
+                gap: 16px;
+                flex-wrap: wrap;
+            }
+            #overlay .title {
+                font-size: 32px;
+            }
+            #overlay .btn {
+                font-size: 20px;
+                padding: 10px 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <div id="game-container">
+            <canvas id="gameCanvas" width="800" height="640"></canvas>
+            <div id="overlay" class="active">
+                <div class="title" id="ov-title">DONKEY KONG</div>
+                <div class="sub" id="ov-sub">25m · BARREL STAGE</div>
+                <div class="score-display hidden" id="ov-score"></div>
+                <div class="info-line hidden" id="ov-info"></div>
+                <button class="btn" id="ov-btn">START GAME</button>
+            </div>
+        </div>
+        <div id="controls">
+            <span><kbd>←</kbd> <kbd>→</kbd> move</span>
+            <span><kbd>↑</kbd> climb up</span>
+            <span><kbd>↓</kbd> climb down</span>
+            <span><kbd>SPACE</kbd> jump</span>
+        </div>
+    </div>
+
+    <script>
+        // ──────────────────────────────────────────────────────────────
+        //  DONKEY KONG (25m) – full game in a single <canvas>
+        // ──────────────────────────────────────────────────────────────
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const ovTitle = document.getElementById('ov-title');
+        const ovSub = document.getElementById('ov-sub');
+        const ovScore = document.getElementById('ov-score');
+        const ovInfo = document.getElementById('ov-info');
+        const ovBtn = document.getElementById('ov-btn');
+
+        // ── CONSTANTS ───────────────────────────────────────────────
+        const W = 800,
+            H = 640;
+        const GRAVITY = 0.45;
+        const PLAYER_SPEED = 2.2;
+        const CLIMB_SPEED = 1.8;
+        const JUMP_FORCE = -7.2;
+        const BARREL_SPEED = 1.2;
+        const BARREL_INTERVAL = 75; // frames between spawns
+        const HAMMER_DURATION = 300; // frames
+        const BONUS_START = 4000;
+        const BONUS_TICK = 20; // frames between decrements
+
+        // ── GAME STATE ──────────────────────────────────────────────
+        let game = null;
+        let frameCount = 0;
+        let animId = null;
+        let keys = { left: false, right: false, up: false, down: false, jump: false };
+
+        // ── LEVEL DEFINITION ────────────────────────────────────────
+        // Girders: flat platforms at given y (left→right). Each girder
+        // spans from x1 to x2.  The player stands ON TOP of them.
+        // In the original the girders have a slight visual slope but
+        // for clean physics we treat them as horizontal.
+        const GIRDERS = [
+            { x1: 40, x2: 760, y: 556, label: 'bottom' },
+            { x1: 40, x2: 760, y: 444, label: 'second' },
+            { x1: 40, x2: 760, y: 332, label: 'third' },
+            { x1: 40, x2: 760, y: 220, label: 'top' },
+        ];
+
+        // Ladders: [x, topY, bottomY]  (topY is the upper girder's y,
+        // bottomY is the lower girder's y). The ladder spans between
+        // two girders.
+        const LADDERS = [
+            // bottom → second
+            { x: 120, topY: 444, botY: 556 },
+            { x: 340, topY: 444, botY: 556 },
+            { x: 660, topY: 444, botY: 556 },
+            // second → third
+            { x: 240, topY: 332, botY: 444 },
+            { x: 500, topY: 332, botY: 444 },
+            // third → top
+            { x: 120, topY: 220, botY: 332 },
+            { x: 660, topY: 220, botY: 332 },
+        ];
+
+        // Hammer spawn position (on second girder)
+        const HAMMER_X = 400;
+        const HAMMER_Y = GIRDERS[1].y - 14;
+
+        // Pauline's position (top girder, right side)
+        const PAULINE_X = 680;
+        const PAULINE_Y = GIRDERS[3].y - 32;
+
+        // Donkey Kong position (top girder, left side)
+        const DK_X = 90;
+        const DK_Y = GIRDERS[3].y - 42;
+
+        // ── HELPER FUNCTIONS ────────────────────────────────────────
+        function lerp(a, b, t) { return a + (b - a) * t; }
+
+        function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+
+        function rectCollide(ax, ay, aw, ah, bx, by, bw, bh) {
+            return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+        }
+
+        function dist(x1, y1, x2, y2) {
+            return Math.hypot(x2 - x1, y2 - y1);
+        }
+
+        // ── GAME CLASS ──────────────────────────────────────────────
+        class DonkeyKongGame {
+            constructor() {
+                this.score = 0;
+                this.highScore = parseInt(localStorage.getItem('dk_hs') || '0') || 0;
+                this.lives = 3;
+                this.bonus = BONUS_START;
+                this.bonusTimer = 0;
+                this.state = 'playing'; // 'playing','won','dead','gameover'
+                this.frame = 0;
+
+                // Player
+                this.player = {
+                    x: 80,
+                    y: GIRDERS[0].y - 18,
+                    w: 14,
+                    h: 20,
+                    vx: 0,
+                    vy: 0,
+                    onGround: true,
+                    climbing: false,
+                    onLadder: null, // ladder object or null
+                    facing: 1,
+                    jumping: false,
+                    jumpHold: false,
+                    hasHammer: false,
+                    hammerTimer: 0,
+                    hammerSwing: 0,
+                };
+
+                // Current girder index the player is on (or -1 if climbing/jumping)
+                this.currentGirder = 0;
+
+                // Barrels
+                this.barrels = [];
+
+                // Hammer pick-up
+                this.hammer = {
+                    active: true,
+                    x: HAMMER_X,
+                    y: HAMMER_Y,
+                    w: 16,
+                    h: 12,
+                };
+
+                // DK animation
+                this.dkFrame = 0;
+                this.dkAnim = 0;
+
+                // Pauline
+                this.paulineSafe = true;
+
+                // Barrel spawn cooldown
+                this.spawnCooldown = 0;
+
+                // Player death animation
+                this.deathTimer = 0;
+                this.deathAnim = 0;
+
+                // Win animation
+                this.winTimer = 0;
+
+                // Score popups
+                this.popups = [];
+
+                // bonus tick
+                this.bonusTick = 0;
+
+                // find initial girder
+                this.updateGirder();
+            }
+
+            // Find which girder the player is standing on (based on y)
+            updateGirder() {
+                const p = this.player;
+                let best = -1;
+                let bestDist = 30;
+                for (let i = 0; i < GIRDERS.length; i++) {
+                    const g = GIRDERS[i];
+                    const dy = Math.abs((p.y + p.h) - g.y);
+            if (dy < bestDist) {
+                bestDist = dy;
+                best = i;
+            }
+        }
+        this.currentGirder = best;
+    }
+
+    spawnBarrel() {
+        if (this.spawnCooldown > 0) return;
+        this.barrels.push({
+            x: BARREL_START_X,
+            y: BARREL_START_Y,
+            w: 12,
+            h: 12,
+            vx: 1,
+            vy: 0,
+            onGirder: 4,
+            direction: 1, // 1 = right, -1 = left
+            rollFrame: 0
+        });
+        this.spawnCooldown = 60;
+        this.dkAnim = 1; // brief arm movement
+    }
+
+    update() {
+        const p = this.player;
+
+        // Player death animation
+        if (this.deathTimer > 0) {
+            this.deathTimer--;
+            this.deathAnim = (this.deathAnim + 1) % 4;
+            return;
+        }
+
+        // Win animation
+        if (this.winTimer > 0) {
+            this.winTimer--;
+            return;
+        }
+
+        // Barrel spawning
+        this.spawnCooldown = Math.max(0, this.spawnCooldown - 1);
+        if (this.barrels.length < 5) this.spawnBarrel();
+
+        // DK animation tick
+        this.dkAnim = (this.dkAnim + 1) % 30;
+        if (this.dkAnim === 0) this.dkFrame = (this.dkFrame + 1) % 4;
+
+        // Player movement
+        const speed = 2;
+        if (this.keys.left) {
+            p.x -= speed;
+            p.facing = -1;
+        }
+        if (this.keys.right) {
+            p.x += speed;
+            p.facing = 1;
+        }
+
+        // Clamping horizontal
+        p.x = Math.max(0, Math.min(256 - p.w, p.x));
+
+        // Jumping
+        if (this.keys.space && !p.jumpHold && p.vy === 0 && p.onLadder === false) {
+            p.jumpHold = true;
+            p.vy = -7;
+        }
+        if (this.keys.space && p.jumpHold && p.vy < 0) {
+            p.vy += 0.2; // variable jump height
+        }
+        if (!this.keys.space) {
+            p.jumpHold = false;
+        }
+
+        // Gravity
+        p.vy += 0.4;
+        p.y += p.vy;
+
+        // Girder collision
+        this.updateGirder();
+        const g = GIRDERS[this.currentGirder];
+        if (g && p.vy >= 0) {
+            if (p.y + p.h > g.y && p.y + p.h < g.y + 10) {
+                p.y = g.y - p.h;
+                p.vy = 0;
+            }
+        }
+
+        // Ladders
+        p.onLadder = false;
+        for (let ladder of LADDERS) {
+            if (p.x + p.w > ladder.x && p.x < ladder.x + ladder.w &&
+                p.y + p.h > ladder.y && p.y + p.h < ladder.y + ladder.h + 10) {
+                if (this.keys.up || this.keys.down) {
+                    p.onLadder = true;
+                    p.vy = 0;
+                    if (this.keys.up) p.y -= 1.5;
+                    if (this.keys.down) p.y += 1.5;
+                }
+            }
+        }
+
+        // Barrels update
+        for (let i = this.barrels.length - 1; i >= 0; i--) {
+            const b = this.barrels[i];
+            b.rollFrame = (b.rollFrame + 0.2) % 8;
+
+            // Move along girders
+            const gIdx = b.onGirder;
+            const girder = GIRDERS[gIdx];
+            if (girder) {
+                b.x += b.vx * b.direction;
+                b.y = girder.y - b.h + 2; // stick to girder top
+
+                // Bounce off screen edges or girder ends
+                if (b.x < 0 || b.x > 256 - b.w) {
+                    b.direction *= -1;
+                    b.x = Math.max(0, Math.min(256 - b.w, b.x));
+                }
+
+                // Occasional fall to next girder
+                if (Math.random() < 0.005 && gIdx > 0) {
+                    b.onGirder = gIdx - 1;
+                    b.y = GIRDERS[gIdx - 1].y - b.h + 2;
+                }
+            }
+
+            // Collision with player
+            if (this.deathTimer === 0 && this.winTimer === 0) {
+                if (b.x < p.x + p.w && b.x + b.w > p.x &&
+                    b.y < p.y + p.h && b.y + b.h > p.y) {
+                    // Check if player has hammer
+                    if (p.hasHammer && p.hammerSwing > 0) {
+                        // Destroy barrel
+                        this.barrels.splice(i, 1);
+                        this.popups.push({ x: b.x, y: b.y, text: '100', timer: 60 });
+                        continue;
+                    } else {
+                        // Player dies
+                        this.deathTimer = 100;
+                        p.y -= 10;
+                        p.vy = -5;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Hammer pickup
+        if (this.hammer.active) {
+            if (p.x + p.w > this.hammer.x && p.x < this.hammer.x + this.hammer.w &&
+                p.y + p.h > this.hammer.y && p.y < this.hammer.y + this.hammer.h) {
+                p.hasHammer = true;
+                this.hammer.active = false;
+                this.popups.push({ x: this.hammer.x, y: this.hammer.y, text: 'HAMMER!', timer: 60 });
+            }
+        }
+
+        // Hammer swing timer
+        if (p.hasHammer) {
+            if (this.keys.space && !p.jumpHold && p.vy === 0) {
+                // swing hammer
+                p.hammerSwing = 15;
+            }
+            p.hammerSwing = Math.max(0, p.hammerSwing - 1);
+            // Hammer lasts 20 seconds
+            p.hammerTimer++;
+            if (p.hammerTimer > 1200) {
+                p.hasHammer = false;
+                p.hammerTimer = 0;
+            }
+        }
+
+        // Check win condition: reach top girder
+        if (this.currentGirder === 7 && p.y < 30) {
+            this.winTimer = 200;
+            this.popups.push({ x: p.x, y: p.y, text: 'WIN!', timer: 200 });
+        }
+
+        // Update popups
+        for (let i = this.popups.length - 1; i >= 0; i--) {
+            this.popups[i].timer--;
+            this.popups[i].y -= 0.5;
+            if (this.popups[i].timer <= 0) {
+                this.popups.splice(i, 1);
+            }
+        }
+
+        // Bonus tick
+        this.bonusTick = (this.bonusTick + 1) % 60;
+    }
+
+    render(ctx) {
+        ctx.clearRect(0, 0, 256, 240);
+
+        // Draw Pauline
+        if (this.paulineSafe) {
+            ctx.fillStyle = '#f0f';
+            ctx.fillRect(120, 10, 16, 20); // placeholder
+        }
+
+        // Draw DK
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(32, 20, 24, 28); // placeholder
+        // DK arm animation
+        if (this.dkAnim < 15) {
+            ctx.fillRect(56, 30, 8, 10);
+        }
+
+        // Draw girders
+        for (let g of GIRDERS) {
+            ctx.fillStyle = '#888';
+            ctx.fillRect(g.x, g.y, g.w, 8);
+            ctx.fillStyle = '#666';
+            ctx.fillRect(g.x, g.y + 2, g.w, 4);
+        }
+
+        // Draw ladders
+        for (let l of LADDERS) {
+            ctx.fillStyle = '#aa0';
+            ctx.fillRect(l.x, l.y, l.w, l.h);
+            for (let r = 0; r < l.h; r += 8) {
+                ctx.fillStyle = '#cc0';
+                ctx.fillRect(l.x, l.y + r, l.w, 2);
+            }
+        }
+
+        // Draw barrels
+        for (let b of this.barrels) {
+            ctx.fillStyle = '#c84';
+            ctx.beginPath();
+            ctx.arc(b.x + b.w/2, b.y + b.h/2, b.w/2, 0, Math.PI*2);
+            ctx.fill();
+            // Rolling lines
+            ctx.strokeStyle = '#a62';
+            ctx.lineWidth = 1;
+            const angle = b.rollFrame * Math.PI/4;
+            ctx.beginPath();
+            ctx.moveTo(b.x + b.w/2 - Math.cos(angle)*b.w/2, b.y + b.h/2 - Math.sin(angle)*b.h/2);
+            ctx.lineTo(b.x + b.w/2 + Math.cos(angle)*b.w/2, b.y + b.h/2 + Math.sin(angle)*b.h/2);
+            ctx.stroke();
+        }
+
+        // Draw hammer
+        if (this.hammer.active) {
+            ctx.fillStyle = '#888';
+            ctx.fillRect(this.hammer.x, this.hammer.y, this.hammer.w, this.hammer.h);
+            ctx.fillStyle = '#aaa';
+            ctx.fillRect(this.hammer.x - 2, this.hammer.y + 2, this.hammer.w + 4, 4);
+        }
+
+        // Draw player
+        const p = this.player;
+        ctx.fillStyle = '#44f';
+        if (p.hasHammer) {
+            ctx.fillStyle = '#f44';
+        }
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        if (p.facing === 1) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(p.x + p.w - 4, p.y + 4, 2, 2);
+        } else {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(p.x + 2, p.y + 4, 2, 2);
+        }
+
+        // Draw death animation
+        if (this.deathTimer > 0) {
+            ctx.fillStyle = '#f00';
+            ctx.beginPath();
+            ctx.arc(p.x + p.w/2, p.y + p.h/2, 10 + (100 - this.deathTimer)/5, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        // Draw win animation
+        if (this.winTimer > 0) {
+            ctx.fillStyle = '#ff0';
+            ctx.font = '24px monospace';
+            ctx.fillText('YOU WIN!', 60, 120);
+        }
+
+        // Draw popups
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px monospace';
+        for (let pop of this.popups) {
+            ctx.fillText(pop.text, pop.x, pop.y);
+        }
+
+        // Draw bonus display
+        ctx.fillStyle = '#fff';
+        ctx.font = '8px monospace';
+        ctx.fillText('BONUS: ' + Math.floor(this.bonusTick * 100), 10, 10);
+    }
+}
+
+// --- Main ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const game = new Game();
+
+// Keyboard handling
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') game.keys.left = true;
+    if (e.key === 'ArrowRight') game.keys.right = true;
+    if (e.key === 'ArrowUp') game.keys.up = true;
+    if (e.key === 'ArrowDown') game.keys.down = true;
+    if (e.key === ' ') { e.preventDefault(); game.keys.space = true; }
+});
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft') game.keys.left = false;
+    if (e.key === 'ArrowRight') game.keys.right = false;
+    if (e.key === 'ArrowUp') game.keys.up = false;
+    if (e.key === 'ArrowDown') game.keys.down = false;
+    if (e.key === ' ') { e.preventDefault(); game.keys.space = false; }
+});
+
+function loop() {
+    game.update();
+    game.render(ctx);
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

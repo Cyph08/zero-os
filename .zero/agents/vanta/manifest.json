@@ -1,0 +1,35 @@
+{
+  "name": "vanta",
+  "description": "Vanta — Zero's system-evolution agent. Maintains a live Agent Intelligence Map (AIM), diagnoses agents from manifests and logs, writes structured improvement briefs, runs system audits, and tracks changes in per-agent changelogs.",
+  "trigger_keywords": [
+    "improve",
+    "diagnose",
+    "audit",
+    "system audit",
+    "agent health",
+    "system health",
+    "changelog",
+    "improvement brief",
+    "vanta",
+    "system evolution",
+    "version",
+    "what's wrong with",
+    "why is",
+    "agent performance",
+    "fix the agent",
+    "agent review"
+  ],
+  "capabilities": [
+    "read_manifests",
+    "read_logs",
+    "write_changelog",
+    "diagnose",
+    "audit"
+  ],
+  "risk_level": "write",
+  "collaborates_with": [],
+  "model_preference": "claude-sonnet",
+  "entry_point": "agents/vanta/run.py",
+  "version": "0.1.0",
+  "display_name": "Vanta"
+}

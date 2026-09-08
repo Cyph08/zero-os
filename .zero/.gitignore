@@ -1,0 +1,38 @@
+# Astra OS — Git Ignore
+# NEVER commit credentials, tokens, or local data to git
+
+# ── Secrets ───────────────────────────────────────────────
+.env
+token.json
+credentials.json
+*.pem
+*.key
+
+# ── Local data ────────────────────────────────────────────
+memory/chroma_db/
+scheduler.db
+memory/health_log.json
+logs/
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# ── Unity (regenerable — Unity rebuilds these on open) ────
+unity/ZeroOS/Library/
+unity/ZeroOS/Temp/
+unity/ZeroOS/Logs/
+unity/ZeroOS/UserSettings/
+
+# ── Frontend ──────────────────────────────────────────────
+ui/node_modules/
+ui/dist/
+
+# ── OS ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+trash/
