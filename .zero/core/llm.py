@@ -54,9 +54,13 @@ _MODELS: dict[Provider, dict[str, str]] = {
         "deep":    "claude-opus-4-8",           # Opus — max reasoning for deep work
     },
     Provider.DEEPSEEK: {
-        "fast":    "deepseek-chat",             # DeepSeek V3 — ~$0.27/1M tokens
-        "capable": "deepseek-reasoner",         # DeepSeek R1 — reasoning model
-        "deep":    "deepseek-reasoner",         # no stronger tier — reuse reasoner
+        # capable used to be deepseek-reasoner (R1). R1 spends its token budget on
+        # chain-of-thought first, so with a long prompt and a modest max_tokens it
+        # returns EMPTY content — agents were billed and answered with nothing.
+        # V3 for normal synthesis (reliable + ~3x faster), R1 only for deep work.
+        "fast":    "deepseek-chat",             # DeepSeek V3
+        "capable": "deepseek-chat",             # DeepSeek V3 — always returns content
+        "deep":    "deepseek-reasoner",         # DeepSeek R1 — reasoning, needs room
     },
     Provider.GROQ: {
         "fast":    "llama-3.1-8b-instant",     # fast, free
@@ -408,7 +412,18 @@ def _chat_deepseek(
             {"role": "user",   "content": prompt},
         ],
     )
-    text = resp.choices[0].message.content or ""
+    msg = resp.choices[0].message
+    text = (msg.content or "").strip()
+    if not text:
+        # Safety net for deepseek-reasoner: if the token budget ran out during
+        # chain-of-thought, content is empty but reasoning_content holds the
+        # thinking. Better to salvage that than hand the caller nothing.
+        text = (getattr(msg, "reasoning_content", None) or "").strip()
+        if text:
+            logger.warning(
+                f"[llm] {model} returned empty content "
+                f"(finish={resp.choices[0].finish_reason}); salvaged reasoning_content"
+            )
     inp = resp.usage.prompt_tokens if resp.usage else 0
     out = resp.usage.completion_tokens if resp.usage else 0
     cost = (inp * 0.07 + out * 1.10) / 1_000_000
