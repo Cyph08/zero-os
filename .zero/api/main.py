@@ -92,6 +92,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     asyncio.create_task(_sync_vault())
 
+    # Telegram bot — Zero's primary interface. Starts only when
+    # TELEGRAM_BOT_TOKEN is set; refuses to start unlocked (see telegram_bot.py).
+    telegram_bot = None
+    try:
+        from phone.telegram_bot import build_from_env
+        telegram_bot = build_from_env()
+        if telegram_bot is not None:
+            asyncio.create_task(telegram_bot.run_polling())
+            logger.info("[main] Telegram bot starting…")
+        else:
+            logger.info("[main] Telegram bot not configured (no TELEGRAM_BOT_TOKEN) — skipping")
+    except RuntimeError as exc:
+        # Misconfigured on purpose-fail: a token with no allowed user id.
+        logger.error(f"[main] Telegram bot NOT started — {exc}")
+    except Exception as exc:
+        logger.warning(f"[main] Telegram bot failed to start (non-fatal): {exc}")
+
     # Start proactive scheduler + register default jobs
     try:
         scheduler.start()
@@ -107,6 +124,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         yield
 
     logger.info("[main] Zero OS shutting down…")
+    if telegram_bot is not None:
+        telegram_bot.stop()
     registry.stop_watcher()
     scheduler.stop()
 

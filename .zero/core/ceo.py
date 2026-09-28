@@ -128,12 +128,17 @@ class CEOAgent:
     # Main entry point
     # ------------------------------------------------------------------
 
-    def handle(self, user_input: str) -> TaskContext:
+    def handle(self, user_input: str, confirmed: bool = False) -> TaskContext:
         """
         Process a user command end-to-end.
 
         Args:
             user_input: Raw command from voice/text/API.
+            confirmed:  True when the caller has ALREADY obtained explicit user
+                        approval for this exact request (e.g. the Telegram bot's
+                        Yes button). Lets a HIGH-risk action through the gate for
+                        this one call only. In API mode the gate otherwise always
+                        denies, so without this a confirmation can never execute.
 
         Returns:
             TaskContext with final response and full execution trace.
@@ -166,8 +171,15 @@ class CEOAgent:
         # 0b. Save user input to hot memory immediately
         hot_memory.add_user(user_input)
 
-        # 1. Intent classification + risk gate
-        intent, allowed = self._classifier.gate(user_input)
+        # 1. Intent classification + risk gate.
+        # `confirmed` means the caller already got an explicit yes from Cyph for
+        # this exact text, so classify (for the audit trail) but skip the gate.
+        if confirmed:
+            intent = self._classifier.classify(user_input)
+            allowed = True
+            logger.info(f"[ceo] Pre-confirmed by caller — gate bypassed: {user_input!r}")
+        else:
+            intent, allowed = self._classifier.gate(user_input)
         bus = ContextBus()   # fresh whiteboard for this request only
         ctx = TaskContext(user_input=user_input, intent=intent, bus=bus)
 

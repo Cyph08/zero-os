@@ -85,6 +85,7 @@ class ResearchBrief:
     summary: str
     sources: list[Source] = field(default_factory=list)
     findings: list[dict[str, str]] = field(default_factory=list)
+    images: list[str] = field(default_factory=list)
     depth: str = "quick"
     is_academic: bool = False
     model_used: str = ""
@@ -101,6 +102,7 @@ class ResearchBrief:
                 for s in self.sources
             ],
             "findings": self.findings,
+            "images": self.images,
             "depth": self.depth,
             "is_academic": self.is_academic,
             "model_used": self.model_used,
@@ -167,21 +169,24 @@ def _decompose(query: str) -> list[str]:
 # Search backends
 # ---------------------------------------------------------------------------
 
-def _tavily_one(query: str, max_results: int) -> list[Source]:
+def _tavily_one(query: str, max_results: int) -> tuple[list[Source], list[str]]:
     """
-    Run a single Tavily search. Error-safe — returns [] on failure.
+    Run a single Tavily search. Error-safe — returns ([], []) on failure.
+
+    include_images rides along on the same request at no extra cost, so image
+    URLs come back for free and the caller can show them (Telegram sendPhoto).
 
     Args:
         query: Search string.
         max_results: Results to request.
 
     Returns:
-        List of Source objects.
+        (sources, image_urls).
     """
     api_key = os.getenv("TAVILY_API_KEY")
     if not api_key:
         logger.warning("[iris] TAVILY_API_KEY not set — skipping web search")
-        return []
+        return [], []
     for attempt in (1, 2):  # one retry on transient failure
         try:
             client = TavilyClient(api_key=api_key)
@@ -190,8 +195,9 @@ def _tavily_one(query: str, max_results: int) -> list[Source]:
                 max_results=max_results,
                 search_depth="advanced",
                 include_raw_content=True,
+                include_images=True,
             )
-            return [
+            sources = [
                 Source(
                     title=r.get("title", ""),
                     url=r.get("url", ""),
@@ -200,9 +206,15 @@ def _tavily_one(query: str, max_results: int) -> list[Source]:
                 )
                 for r in resp.get("results", [])
             ]
+            # Tavily returns either bare URL strings or {"url": ..., "description": ...}
+            images = [
+                img.get("url", "") if isinstance(img, dict) else str(img)
+                for img in (resp.get("images") or [])
+            ]
+            return sources, [u for u in images if u.startswith("http")]
         except Exception as exc:
             logger.warning(f"[iris] Tavily attempt {attempt} failed for {query!r}: {exc}")
-    return []
+    return [], []
 
 
 def _search_web_parallel(queries: list[str], per_query: int) -> list[Source]:
@@ -455,6 +467,7 @@ def run(query: str, fetch_pages: bool = True, bus: "ContextBus | None" = None) -
                 for s in cached.get("sources", [])
             ],
             findings=cached.get("findings", []),
+            images=cached.get("images", []),
             depth=cached.get("depth", "quick"),
             is_academic=cached.get("is_academic", False),
             model_used=cached.get("model_used", "cache"),
@@ -474,7 +487,17 @@ def run(query: str, fetch_pages: bool = True, bus: "ContextBus | None" = None) -
     # 2. Search — web sub-queries + (optionally) academic APIs, ALL concurrently so a
     #    slow/blocked source (arXiv/S2 can be flaky) never delays the web results.
     per = DEEP_PER_QUERY if deep else QUICK_RESULTS
-    tasks: list = [(lambda q=q: _tavily_one(q, per)) for q in queries]
+    # Per-request image collector. Created here (not module-level) so concurrent
+    # requests from the CEO's thread pool can never see each other's images.
+    images: list[str] = []
+
+    def _web(q: str = query, n: int = per) -> list[Source]:
+        """Search one sub-query, siphoning off any images Tavily returned."""
+        srcs, imgs = _tavily_one(q, n)
+        images.extend(imgs)          # list.append/extend is atomic under the GIL
+        return srcs
+
+    tasks: list = [(lambda q=q: _web(q, per)) for q in queries]
     if academic:
         tasks.append(lambda: _search_arxiv(query))
         tasks.append(lambda: _search_semantic_scholar(query))
@@ -526,6 +549,7 @@ def run(query: str, fetch_pages: bool = True, bus: "ContextBus | None" = None) -
         summary=summary,
         sources=sources,
         findings=findings,
+        images=images[:6],
         depth=depth,
         is_academic=academic,
         model_used=model_used,
@@ -551,6 +575,7 @@ def run(query: str, fetch_pages: bool = True, bus: "ContextBus | None" = None) -
         bus.publish("research", "summary", brief.summary)
         bus.publish("research", "sources", [{"title": s.title, "url": s.url} for s in brief.sources])
         bus.publish("research", "findings", brief.findings)
+        bus.publish("research", "images", brief.images)
         bus.publish("research", "query", query)
         logger.debug(f"[iris] Published to bus: summary + {len(brief.sources)} sources + findings")
 

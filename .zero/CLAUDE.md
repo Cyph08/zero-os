@@ -266,7 +266,13 @@ Every agent in the registry is exposed as an MCP tool.
 - [x] .gitignore created — .env, tokens, chroma_db, logs all protected
 - [x] Server confirmed live at localhost:8000 — 12 agents, 3 cron jobs running
 
-### Phase 6 — Desktop App (Visual OS Interface)
+### Phase 6 — Desktop App (Visual OS Interface) — PARKED
+
+> **PARKED (2026-09-28) — superseded by the Telegram bot.** Cyph's interface is now
+> Telegram (`phone/telegram_bot.py`): text, voice notes, file delivery and proactive
+> briefings from his phone, no window and no build step. The React/Tauri app and the
+> Unity orb stay on disk and in git, but this phase is **not active work**. Revisit only
+> if a desktop HUD is wanted again.
 
 **Vision:** Not a chat window. A full visual display that responds to voice.
 When Cyph says "what's the weather", Zero opens a map with pins and speaks key info.
@@ -388,7 +394,70 @@ Desktop left a recoverable trash entry. Offline self-check: `python -m agents.sy
 
 **Files:** `agents/system/manifest.json`, `agents/system/run.py`, `agents/system/CHANGELOG.md`
 
-### Phase 8 — ATLAS · PRISM (Planned — Canvas blocked)
+### Phase B2 — Telegram Interface + Kimi/Local Hybrid ✅ (2026-09-28)
+
+**Goal:** make Zero usable from Cyph's phone with no website, and get it off the dead
+Anthropic key onto Kimi plus a free local model.
+
+**Telegram bot — `phone/telegram_bot.py`** (one file, **zero new dependencies** — raw Bot
+API over the `httpx` already in requirements; deliberately NOT python-telegram-bot, which
+ships a competing asyncio loop that fights FastAPI's).
+
+- Long polling (`getUpdates`, 25s), started from `api/main.py`'s lifespan when
+  `TELEGRAM_BOT_TOKEN` is set. One process — `restart-zero.bat` runs everything.
+- **SECURITY: locked to one `TELEGRAM_ALLOWED_USER_ID`.** Every other sender is ignored and
+  logged, and `build_from_env()` **raises rather than starting unlocked** — Helm can delete
+  files and run shell commands, so there is no public mode. Do not add one.
+- Text → `ceo.handle()` in a worker thread with a live typing indicator (this replaces the
+  token-streaming task, which is meaningless for discrete Telegram messages).
+- Voice notes → `getFile` → Whisper (`transcribe_file`, PHONE_MODEL) → same path as text.
+  Needs ffmpeg for Telegram's `.oga`; the bot says so explicitly if it's missing.
+- **File delivery**: replies are scanned for a real on-disk path, so Forge's builds and
+  Helm's reads arrive in the chat as documents — no coupling to either agent's dataclass.
+- **Images**: Iris publishes Tavily image URLs to the bus; the bot sends them as photos.
+- **Destructive confirmation**: Yes/Cancel inline keyboard before deletes, moves,
+  overwrites, shell commands, or anything the intent gate rates HIGH. Reuses
+  `intent._is_informational_question()` so "how do I delete a file in python" is not gated.
+- **Proactive push**: drains `core.alerts.get_undelivered()` every 30s, so the 08:00
+  briefing / 18:00 news / Sunday digest land in Telegram with no new plumbing.
+- Commands: `/start /help /agents /health /status /persona`.
+- Offline self-check: `python -m phone.telegram_bot`.
+
+**CEO fix — `ceo.handle(user_input, confirmed=False)`.** `_api_confirm` returns False
+unconditionally, so HIGH-risk actions could NEVER be approved in API mode — the phone
+bridge's "confirm in the next message" promise was unfulfillable. `confirmed=True` now
+classifies for the audit trail but skips the gate, for callers that already have an explicit
+yes (the bot's Yes button).
+
+**Model stack — `core/llm.py`.** New `Provider.MOONSHOT` (Kimi, OpenAI-compatible at
+`api.moonshot.ai/v1`, a clone of `_chat_deepseek`). Chain is now
+**moonshot → anthropic → deepseek → groq → ollama**. Tiers: `capable`→`kimi-k2.6`,
+`deep`→`kimi-k3`, with per-model cost logging. Ollama default `mistral` → `qwen3.5:4b`.
+
+**Hybrid local routing.** `ZERO_LOCAL_FAST=1` puts Ollama at the front of the chain *for
+the `fast` tier only* — agent ranking, query decomposition, draft grading, i.e. most of the
+5-15 calls per request — free on the GPU, while real synthesis goes to Kimi. Three lines,
+reusing the existing failover machinery: if Ollama is down it falls straight through to
+cloud with no config change.
+
+**VRAM finding that decided the local model:** `qwen3:8b` Q4 is 5.0GB + ~1GB context ≈ the
+entire 6GB, leaving nothing for Whisper (~3GB). `qwen3.5:4b` is 3.4GB and coexists. Keep
+local context ≤8K.
+
+**Iris image search** — `include_images=True` rides free on the same Tavily call;
+`ResearchBrief.images` + bus publish. Verified live: 5 real image URLs.
+
+**Files:** `phone/telegram_bot.py`, `docs/model_setup.md`, `docs/telegram_setup.md`,
+`.env.example` (rewritten), `core/llm.py`, `core/ceo.py`, `api/main.py`,
+`agents/research/run.py`
+
+### Phase 8 — ATLAS · PRISM — PARKED (Canvas was the blocker; Telegram replaced the need)
+
+> **PARKED (2026-09-28) — superseded by the Telegram bot.** Cyph's interface is now
+> Telegram (`phone/telegram_bot.py`): text, voice notes, file delivery and proactive
+> briefings from his phone, no window and no build step. The React/Tauri app and the
+> Unity orb stay on disk and in git, but this phase is **not active work**. Revisit only
+> if a desktop HUD is wanted again.
 
 **Goal:** Visual render hub (ATLAS) and sectioned anatomy explorer (PRISM). Blocked on prerequisite: **the Dynamic Context Canvas does not exist** in the current React UI. Required groundwork before either can be built:
 
@@ -399,7 +468,13 @@ Desktop left a recoverable trash entry. Offline self-check: `python -m agents.sy
 
 Full implementation briefs at `C:\Users\deepe\.claude\plans\binary-puzzling-hejlsberg.md`.
 
-### Phase 9 — UI Polish (After Agent Improvement)
+### Phase 9 — UI Polish — PARKED
+
+> **PARKED (2026-09-28) — superseded by the Telegram bot.** Cyph's interface is now
+> Telegram (`phone/telegram_bot.py`): text, voice notes, file delivery and proactive
+> briefings from his phone, no window and no build step. The React/Tauri app and the
+> Unity orb stay on disk and in git, but this phase is **not active work**. Revisit only
+> if a desktop HUD is wanted again.
 
 **Goal:** Dedicated pass to make the Zero OS desktop UI exactly how Cyph wants it visually and functionally. Separate from agent work so both can be done properly.
 

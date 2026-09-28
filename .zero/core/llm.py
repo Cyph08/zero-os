@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from dataclasses import dataclass
 from enum import Enum
 
@@ -27,10 +28,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 class Provider(str, Enum):
+    MOONSHOT  = "moonshot"   # Kimi — preferred cloud provider
     ANTHROPIC = "anthropic"
     DEEPSEEK  = "deepseek"
     GROQ      = "groq"
-    OLLAMA    = "ollama"
+    OLLAMA    = "ollama"     # local (Qwen via Ollama) — also serves the hybrid fast tier
     AIRLLM    = "airllm"     # local "deep brain" — big model on tiny GPU (opt-in, slow)
 
 
@@ -39,6 +41,13 @@ class Provider(str, Enum):
 # deepest, thesis-level questions). Providers without a stronger model reuse
 # capable for deep — the tier still exists so the router never KeyErrors.
 _MODELS: dict[Provider, dict[str, str]] = {
+    Provider.MOONSHOT: {
+        # Kimi (Moonshot). OpenAI-compatible API. k2.6 is the cheap workhorse;
+        # k3 is the flagship (2.8T params, 1M context) reserved for the deep tier.
+        "fast":    os.getenv("MOONSHOT_FAST_MODEL", "kimi-k2.6"),
+        "capable": os.getenv("MOONSHOT_MODEL", "kimi-k2.6"),
+        "deep":    os.getenv("MOONSHOT_DEEP_MODEL", "kimi-k3"),
+    },
     Provider.ANTHROPIC: {
         "fast":    "claude-haiku-4-5-20251001",
         "capable": "claude-sonnet-4-6",
@@ -55,9 +64,12 @@ _MODELS: dict[Provider, dict[str, str]] = {
         "deep":    "llama-3.3-70b-versatile",  # no stronger tier — reuse 70b
     },
     Provider.OLLAMA: {
-        "fast":    "mistral",                  # 7B Q4 — fits RTX 4050 6GB
-        "capable": "mistral",
-        "deep":    "mistral",
+        # Qwen3.5 4B Q4 ≈ 3.4GB — fits the RTX 4050's 6GB *alongside* Whisper
+        # (an 8B Q4 at ~5GB would starve STT). Has tool calling + thinking.
+        # Keep the context ≤8K; every extra token eats the same 6GB.
+        "fast":    os.getenv("OLLAMA_MODEL", "qwen3.5:4b"),
+        "capable": os.getenv("OLLAMA_MODEL", "qwen3.5:4b"),
+        "deep":    os.getenv("OLLAMA_MODEL", "qwen3.5:4b"),
     },
     Provider.AIRLLM: {
         # Layer-by-layer inference: a 70B-class model on the 6GB RTX 4050.
@@ -76,8 +88,18 @@ _ANTHROPIC_COST: dict[str, tuple[float, float]] = {
     "claude-opus-4-8":           (5.00, 25.00),
 }
 
+# Per-model Moonshot pricing (USD per 1M tokens, input/output) — k3 is ~3x k2.6,
+# so log it honestly rather than averaging. Unlisted models fall back to k2.6.
+_MOONSHOT_COST: dict[str, tuple[float, float]] = {
+    "kimi-k2.6":                  (0.95, 4.00),
+    "kimi-k2.7-code":             (0.95, 4.00),
+    "kimi-k2.7-code-highspeed":   (1.90, 8.00),
+    "kimi-k3":                    (3.00, 15.00),
+}
+
 # Cost per 1M tokens (usd) — for logging/tracking
 _COST: dict[Provider, dict[str, float]] = {
+    Provider.MOONSHOT:  {"input": 0.95,   "output": 4.00},   # k2.6 default
     Provider.ANTHROPIC: {"input": 0.25,   "output": 1.25},
     Provider.DEEPSEEK:  {"input": 0.07,   "output": 1.10},   # extremely cheap
     Provider.GROQ:      {"input": 0.0,    "output": 0.0},
@@ -96,14 +118,58 @@ def _key_set(env_var: str) -> bool:
     return bool(val) and "your_" not in val
 
 
+_RATE_LIMIT_BACKOFF_S = float(os.getenv("LLM_RATE_LIMIT_BACKOFF_S", "3"))
+
+
+def _is_rate_limited(exc: BaseException) -> bool:
+    """
+    True when an exception looks like a provider rate limit (HTTP 429).
+
+    Checked by string because each SDK raises its own class; a wrong guess only
+    costs one extra retry, so matching loosely is safer than importing four
+    different exception types.
+
+    Args:
+        exc: The exception a provider raised.
+
+    Returns:
+        True if it should be retried against the same provider.
+    """
+    text = f"{type(exc).__name__} {exc}".lower()
+    return (
+        "429" in text
+        or "rate limit" in text
+        or "ratelimit" in text
+        or "too many requests" in text
+        or "quota" in text
+    )
+
+
+def _local_fast_enabled() -> bool:
+    """
+    True when the cheap 'fast' tier should run on the local model first.
+
+    Zero makes 5-15 LLM calls per request; most are short bookkeeping calls
+    (agent ranking, query decomposition, draft grading). Serving those from
+    local Qwen costs nothing and keeps the cloud spend on real synthesis.
+    Set ZERO_LOCAL_FAST=1 in .env to enable. Falls back automatically to the
+    normal provider chain if Ollama isn't running.
+    """
+    return os.getenv("ZERO_LOCAL_FAST", "0").strip() not in ("0", "false", "False", "")
+
+
 def detect_provider() -> Provider:
     """
     Detect which LLM provider to use based on available API keys in .env.
-    Priority: Anthropic → DeepSeek → Groq → Ollama (local)
+    Priority: Moonshot → Anthropic → DeepSeek → Groq → Ollama (local)
 
     Returns:
         Provider enum value.
     """
+    if _key_set("MOONSHOT_API_KEY"):
+        logger.info("[llm] Provider: Moonshot (Kimi)")
+        return Provider.MOONSHOT
+
     if _key_set("ANTHROPIC_API_KEY"):
         logger.info("[llm] Provider: Anthropic (Claude)")
         return Provider.ANTHROPIC
@@ -147,6 +213,8 @@ def _provider_chain() -> list[Provider]:
         Providers to try in order.
     """
     chain: list[Provider] = []
+    if _key_set("MOONSHOT_API_KEY"):
+        chain.append(Provider.MOONSHOT)
     if _key_set("ANTHROPIC_API_KEY"):
         chain.append(Provider.ANTHROPIC)
     if _key_set("DEEPSEEK_API_KEY"):
@@ -188,6 +256,13 @@ def chat(
         return _chat_one_provider(provider, prompt, system, tier, max_tokens)
 
     chain = _provider_chain()
+
+    # Hybrid routing: serve the cheap 'fast' tier from the local model first. If
+    # Ollama isn't running the normal chain still follows, so this degrades to
+    # cloud-only with no config change.
+    if tier == "fast" and _local_fast_enabled():
+        chain = [Provider.OLLAMA] + [p for p in chain if p != Provider.OLLAMA]
+
     last_exc: Exception | None = None
     for i, p in enumerate(chain):
         try:
@@ -196,6 +271,16 @@ def chat(
                 logger.info(f"[llm] Served by fallback provider {p.value} (preferred unavailable)")
             return resp
         except Exception as exc:
+            # A rate limit is transient and self-clearing — the CEO dispatches
+            # agents in parallel, so a busy request can trip one. Back off once
+            # and retry the SAME provider before demoting to a weaker one.
+            if _is_rate_limited(exc):
+                logger.warning(f"[llm] {p.value} rate-limited; retrying in {_RATE_LIMIT_BACKOFF_S}s")
+                time.sleep(_RATE_LIMIT_BACKOFF_S)
+                try:
+                    return _chat_one_provider(p, prompt, system, tier, max_tokens)
+                except Exception as retry_exc:
+                    exc = retry_exc
             last_exc = exc
             nxt = chain[i + 1].value if i + 1 < len(chain) else "none"
             logger.warning(f"[llm] Provider {p.value} failed ({exc}); falling over to {nxt}")
@@ -236,6 +321,8 @@ def _dispatch_provider(
     p: Provider, prompt: str, system: str, model: str, max_tokens: int
 ) -> LLMResponse:
     """Route a single chat call to the concrete provider implementation."""
+    if p == Provider.MOONSHOT:
+        return _chat_moonshot(prompt, system, model, max_tokens)
     if p == Provider.ANTHROPIC:
         return _chat_anthropic(prompt, system, model, max_tokens)
     elif p == Provider.DEEPSEEK:
@@ -274,6 +361,33 @@ def _chat_anthropic(
     cost = (inp * in_rate + out * out_rate) / 1_000_000
     return LLMResponse(text=text, input_tokens=inp, output_tokens=out,
                        provider=Provider.ANTHROPIC, model=model, cost_usd=cost)
+
+
+def _chat_moonshot(
+    prompt: str, system: str, model: str, max_tokens: int
+) -> LLMResponse:
+    """Call Moonshot (Kimi). OpenAI-compatible endpoint at api.moonshot.ai/v1."""
+    from openai import OpenAI
+    client = OpenAI(
+        api_key=os.getenv("MOONSHOT_API_KEY"),
+        base_url=os.getenv("MOONSHOT_BASE_URL", "https://api.moonshot.ai/v1"),
+        timeout=_LLM_TIMEOUT_S,
+    )
+    resp = client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user",   "content": prompt},
+        ],
+    )
+    text = resp.choices[0].message.content or ""
+    inp = resp.usage.prompt_tokens if resp.usage else 0
+    out = resp.usage.completion_tokens if resp.usage else 0
+    in_rate, out_rate = _MOONSHOT_COST.get(model, _MOONSHOT_COST["kimi-k2.6"])
+    cost = (inp * in_rate + out * out_rate) / 1_000_000
+    return LLMResponse(text=text, input_tokens=inp, output_tokens=out,
+                       provider=Provider.MOONSHOT, model=model, cost_usd=cost)
 
 
 def _chat_deepseek(
