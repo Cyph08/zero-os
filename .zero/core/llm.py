@@ -124,6 +124,45 @@ def _key_set(env_var: str) -> bool:
 
 _RATE_LIMIT_BACKOFF_S = float(os.getenv("LLM_RATE_LIMIT_BACKOFF_S", "3"))
 
+# Local inference needs a bigger budget than the cloud: a cold load of a 4B model
+# from disk measured ~34s on the RTX 4050 (93s including the first prompt eval),
+# which the old hard-coded 60s could not absorb.
+_OLLAMA_TIMEOUT_S = float(os.getenv("OLLAMA_TIMEOUT_S", "180"))
+
+
+def prewarm_local(model: str | None = None) -> bool:
+    """
+    Load the local model into VRAM so the first real request isn't slow.
+
+    Called at backend startup when ZERO_LOCAL_FAST is on. Cheap and best-effort:
+    a one-token generation is enough to make Ollama resident.
+
+    Args:
+        model: Model tag to warm. Defaults to the configured Ollama model.
+
+    Returns:
+        True if the model responded, False otherwise (never raises).
+    """
+    import httpx
+    tag = model or _MODELS[Provider.OLLAMA]["fast"]
+    try:
+        httpx.post(
+            "http://localhost:11434/api/chat",
+            json={
+                "model": tag,
+                "messages": [{"role": "user", "content": "ok"}],
+                "stream": False,
+                "options": {"num_predict": 1},
+                "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+            },
+            timeout=_OLLAMA_TIMEOUT_S,
+        ).raise_for_status()
+        logger.info(f"[llm] Local model {tag} pre-warmed and resident")
+        return True
+    except Exception as exc:
+        logger.warning(f"[llm] Local pre-warm skipped ({tag}): {exc}")
+        return False
+
 
 def _is_rate_limited(exc: BaseException) -> bool:
     """
@@ -465,16 +504,37 @@ def _chat_ollama(
         ],
         "stream": False,
         "options": {"num_predict": max_tokens},
+        # Keep the model resident between calls. Ollama's default is 5 minutes,
+        # after which the next request pays a ~34s cold load from disk — which
+        # used to blow the old hard-coded 60s timeout and fail over to cloud.
+        # Measured on the RTX 4050: cold 93s, warm 2.9s at 48 tok/s on GPU.
+        "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+        # Qwen3.x are thinking models: left on, they spend the whole num_predict
+        # budget in `message.thinking` and return EMPTY content (done_reason
+        # 'length'). The local tier only does short bookkeeping work — routing,
+        # decomposition, grading — where chain-of-thought is pure waste.
+        # Set OLLAMA_THINK=1 to re-enable for a reasoning-capable local model.
+        "think": os.getenv("OLLAMA_THINK", "0").strip() in ("1", "true", "True"),
     }
     try:
         resp = httpx.post(
             "http://localhost:11434/api/chat",
             json=payload,
-            timeout=60,
+            timeout=_OLLAMA_TIMEOUT_S,
         )
         resp.raise_for_status()
         data = resp.json()
-        text = data.get("message", {}).get("content", "")
+        msg = data.get("message", {}) or {}
+        text = (msg.get("content") or "").strip()
+        if not text:
+            # Safety net if thinking is enabled and ate the budget — salvage the
+            # reasoning rather than handing the caller an empty string.
+            text = (msg.get("thinking") or "").strip()
+            if text:
+                logger.warning(
+                    f"[llm] {model} returned empty content "
+                    f"(done={data.get('done_reason')}); salvaged thinking"
+                )
         return LLMResponse(text=text, input_tokens=0, output_tokens=0,
                            provider=Provider.OLLAMA, model=model, cost_usd=0.0)
     except Exception as exc:

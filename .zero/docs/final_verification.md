@@ -158,6 +158,78 @@ Written out so they can be run in order once configured:
 8. After the Kimi key: re-run 2 and 4, confirm `ceo_actions.jsonl` shows
    `moonshot/kimi-k2.6` with real costs.
 
+---
+
+## Local model: installed, measured, and a second empty-reply bug fixed
+
+`qwen3.5:4b` pulled (3.4GB) and confirmed running **100% on GPU**.
+
+| Measurement | Value |
+|---|---|
+| Cold start (first load from disk) | 33.7s load, 93s total |
+| Warm call | **2.9s total, 48.1 tok/s** |
+| VRAM with model resident | 4,294 MiB used / 1,627 MiB free of 6,141 |
+| Cost | **$0.00** |
+
+**Bug found and fixed — the same class as the DeepSeek one.** Qwen3.x are
+*thinking* models. Through Zero's router the fast tier returned **empty text**:
+the whole `num_predict` budget went into `message.thinking` and `content` came
+back `''` with `done_reason: length`. Proven directly against the Ollama API —
+with `think: false` the same call returns `'ok'` and `done_reason: stop`.
+
+Fixed in `_chat_ollama()`:
+- `think: false` by default (override with `OLLAMA_THINK=1`). The local tier only
+  does short bookkeeping — routing, decomposition, grading — where
+  chain-of-thought is pure waste and actively breaks the reply.
+- `keep_alive: 30m` so the model stays resident instead of paying the 34s cold
+  load every 5 minutes.
+- Timeout raised from a hard-coded 60s to `OLLAMA_TIMEOUT_S` (default 180) — the
+  old value could not absorb a cold load, which is why the first attempt failed
+  over to cloud.
+- Salvage net: if content is empty, fall back to `thinking`.
+- `prewarm_local()` called at backend startup when `ZERO_LOCAL_FAST=1`, so the
+  first real request never pays the cold load.
+
+**Correction to an earlier claim in this document:** I wrote that an 8B model
+could not coexist with Whisper. Measured properly, with the 4B resident there is
+1,627 MiB free — enough for Whisper `base` (~1GB, which is what the phone and
+Telegram voice path actually use via `PHONE_MODEL`), but **not** `large-v3`
+(~3GB). So the 4B choice is right, and voice notes will work, but the reason is
+more precise than originally stated.
+
+---
+
+## Verified on the real `.env` (the config that will actually run)
+
+`.env` was missing every new setting — only `.env.example` had been updated. Now
+appended (with a timestamped backup, which `.gitignore`'s `.env.*` covers):
+`MOONSHOT_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_ID`,
+`TELEGRAM_VOICE_REPLIES`, `ZERO_LOCAL_FAST=1`, `OLLAMA_MODEL`,
+`OLLAMA_KEEP_ALIVE`, `OLLAMA_TIMEOUT_S`, `OLLAMA_THINK=0`, `LLM_TIMEOUT_S`.
+
+**`ANTHROPIC_API_KEY` commented out** (value preserved — uncomment after topping
+up). It was failing on every call before falling over, on all 5-15 calls per
+request. The chain is now `deepseek -> ollama` with no wasted round-trip.
+
+Live results on that config:
+
+| Tier | Served by | Time | Cost |
+|---|---|---|---|
+| fast | **ollama/qwen3.5:4b** | 3.5s | **$0.000000** |
+| capable | deepseek/deepseek-chat | 4.5s | $0.000003 |
+| deep | deepseek/deepseek-reasoner | 1.0s | $0.000020 |
+
+**Full CEO request end-to-end** (the exact path the Telegram bot calls):
+`"what is on my schedule this week"` → agents `[schedule, research, study]`,
+41.4s, **$0.001562**, markdown-free reply in Zero's voice that referenced the
+Chen's Happy House shifts unprompted and explicitly discarded content it
+couldn't substantiate.
+
+Minor observation, not a failure: routing pulled in `research` and `study` for a
+pure calendar question — slightly over-eager, worth a look during agent tuning.
+
+---
+
 ## Health score
 
 Before this session: **8.3/10** (post-Fable, but unverified live, on a fallback

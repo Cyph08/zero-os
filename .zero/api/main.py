@@ -92,6 +92,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     asyncio.create_task(_sync_vault())
 
+    # Pre-warm the local model when the hybrid fast tier is on, so the first
+    # request doesn't pay a ~34s cold load from disk.
+    async def _prewarm_local() -> None:
+        def _warm() -> None:
+            try:
+                from core.llm import _local_fast_enabled, prewarm_local
+                if _local_fast_enabled():
+                    prewarm_local()
+            except Exception as exc:
+                logger.warning(f"[main] Local pre-warm failed (non-fatal): {exc}")
+        await asyncio.to_thread(_warm)
+
+    asyncio.create_task(_prewarm_local())
+
     # Telegram bot — Zero's primary interface. Starts only when
     # TELEGRAM_BOT_TOKEN is set; refuses to start unlocked (see telegram_bot.py).
     telegram_bot = None

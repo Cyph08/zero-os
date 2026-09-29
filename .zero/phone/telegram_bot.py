@@ -580,15 +580,15 @@ class ZeroTelegramBot:
         into core.alerts; this drains the same queue the phone UI polls, so the
         proactive side needs no new plumbing.
         """
-        from core.alerts import alerts
+        from core.alerts import alert_queue
         while self._running:
             try:
-                pending = await asyncio.to_thread(alerts.get_undelivered)
+                pending = await asyncio.to_thread(alert_queue.get_undelivered)
                 for alert in pending:
                     await self._send(chat_id, f"{alert.title}\n\n{alert.body}")
                 if pending:
                     await asyncio.to_thread(
-                        alerts.mark_delivered, [a.alert_id for a in pending]
+                        alert_queue.mark_delivered, [a.alert_id for a in pending]
                     )
                     logger.info(f"[tg] Pushed {len(pending)} proactive alert(s)")
             except Exception as exc:
