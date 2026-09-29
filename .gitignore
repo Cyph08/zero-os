@@ -26,6 +26,7 @@ __pycache__/
 logs/
 trash/
 *.db
+*.db.backup-*
 *.sqlite3
 .zero/memory/chroma_db/
 .zero/memory/health_log.json

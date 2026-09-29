@@ -23,7 +23,24 @@ logger = logging.getLogger(__name__)
 
 _DB_PATH = Path(__file__).parent / "skills.db"
 _WORD_RE = re.compile(r"[a-z0-9]+")
-_MIN_OVERLAP = 2  # token overlap required to count as a skill hit
+_MIN_OVERLAP = 2  # meaningful-token overlap required to count as a skill hit
+
+# Matching used to compare raw tokens against the UNION of every trigger phrase.
+# With ~5 phrases per skill that union runs to 30+ tokens, most of them filler,
+# so almost any query shared two and hijacked routing — a calendar skill was
+# catching "find the restart-zero.bat file on my laptop". Stripping filler and
+# requiring the match to cover half the query's real words fixes that.
+_STOPWORDS = frozenset("""
+a an and are as at be been by can could do does doing for from get give got had has
+have how i if in into is it its just like make me my of on or our out should so some
+that the their them then there these they this to up us was we were what when where
+which who why will with would you your s t re ve ll d m o n
+""".split())
+
+
+def _meaningful(text: str) -> set[str]:
+    """Tokenise and drop filler words, so only content words can match."""
+    return {t for t in _WORD_RE.findall(text.lower()) if t not in _STOPWORDS and len(t) > 1}
 
 
 # ---------------------------------------------------------------------------
@@ -44,8 +61,8 @@ class Skill:
     last_used_at: float | None = None
 
     def trigger_tokens(self) -> set[str]:
-        """Union of all tokens across every trigger phrase."""
-        return set(_WORD_RE.findall(" ".join(self.trigger_phrases).lower()))
+        """Content words across every trigger phrase (filler removed)."""
+        return _meaningful(" ".join(self.trigger_phrases))
 
 
 # ---------------------------------------------------------------------------
@@ -167,13 +184,18 @@ class SkillStore:
         Returns:
             Ranked list of matching Skill objects.
         """
-        query_tokens = set(_WORD_RE.findall(query.lower()))
+        query_tokens = _meaningful(query)
         if not query_tokens:
             return []
+        # The match must also COVER the query, not just brush it. A skill that
+        # shares two words with a ten-word question is not the right plan for it;
+        # without this a stored calendar skill swallowed unrelated requests and
+        # the correct specialist agent never got a chance to match.
+        needed = max(_MIN_OVERLAP, (len(query_tokens) + 1) // 2)
         scored: list[tuple[int, Skill]] = []
         for skill in self.load_all():
             overlap = len(query_tokens & skill.trigger_tokens())
-            if overlap >= _MIN_OVERLAP:
+            if overlap >= needed:
                 scored.append((overlap, skill))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [s for _, s in scored[:top_k]]

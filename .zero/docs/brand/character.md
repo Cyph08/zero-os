@@ -85,3 +85,64 @@ Needs `GEMINI_API_KEY` in `.env` (free: aistudio.google.com/apikey), then the
 `gemini-2.5-flash-image` for quick variations. `google-genai` is installed.
 
 Output goes here, in `docs/brand/`.
+
+---
+
+## Ready-to-paste prompt
+
+For any image tool — the Gemini web app (free, no API quota needed), ChatGPT,
+Midjourney, Leonardo. Paste verbatim:
+
+> Character portrait of "Zero", an artificial human woman — the face of a personal
+> AI operating system. Stylised 3D render in the style of a high-end animated
+> feature (Arcane-adjacent): painterly, characterful, confident shapes. NOT
+> photorealistic, NOT anime, NOT glossy corporate 3D, NOT cyberpunk cliché.
+>
+> She is mid-twenties, warm and sharp at the same time — brilliant and completely
+> at ease, a trusted friend who is genuinely glad you're here, never a servant and
+> never eager to please. Expression: a slight, genuine, knowing half-smile and
+> direct eye contact with the viewer. Relaxed, quietly amused, intelligent.
+>
+> Warm honey-blonde hair, soft and natural with loose movement, catching the rim
+> light. Fair skin with real subsurface warmth, no plastic sheen. Simple dark
+> fine-knit top. No visible technology, no circuitry, no seams, no chrome, no
+> headset. Her artificial nature shows only as a faint inner luminosity in the eyes
+> and a soft glowing edge-light along her silhouette.
+>
+> Lighting: warm golden-amber key light from one side, cool cyan rim light from the
+> other — this warm/cool split is essential.
+>
+> Setting: deep warm-toned darkness, not flat black. Far behind her, well out of
+> focus: a vertical violet-into-white-hot beam of light, thin elegant gold
+> armillary rings, and a faint constellation-like neural mesh. Atmospheric and
+> subtle — she is unmistakably the subject.
+>
+> Composition: head and shoulders, three-quarter turn toward the viewer, eyes to
+> camera, subject centred with generous margin (this will be cropped to a circle
+> for a profile picture — keep everything important away from the corners).
+> Square 1:1.
+
+For the banner, swap the last paragraph for: *"Composition: wider three-quarter
+shot, caught mid-thought rather than posed, the rings and mesh around her. 16:9."*
+
+## Why the API route is blocked
+
+The Gemini API key works for text, but every image model returns HTTP 429 with:
+
+```
+quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+limit:   0
+```
+
+`limit: 0` — the free tier allows **zero** image-generation requests. It is not
+exhausted, it is zero by design.
+
+**A Gemini Advanced / Google One subscription does not fix this** — that is a
+consumer product and grants no API quota. Image generation needs **billing enabled
+on the Google Cloud project behind the API key**:
+aistudio.google.com → the key's project → Billing → link an account. Then
+`gemini-3-pro-image` and `nano-banana-pro-preview` start working immediately, at
+roughly $0.03–0.14 per image.
+
+The free Gemini **web app** has no such restriction — pasting the prompt above into
+gemini.google.com costs nothing.

@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nova Strike · 3 Lives · Boss Every 10</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            min-height: 100vh;
+            background: radial-gradient(circle at 20% 20%, #0b0e1e, #03050c);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            padding: 16px;
+        }
+        .game-container {
+            background: rgba(10, 15, 30, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 40px;
+            padding: 24px;
+            box-shadow: 0 25px 50px -8px rgba(0, 0, 0, 0.8), 0 0 0 2px #2a3a6e inset;
+            border: 1px solid #3c4d88;
+            width: fit-content;
+            max-width: 100%;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #e0f2fe;
+            margin-bottom: 18px;
+            padding: 0 8px;
+            font-weight: 600;
+            text-shadow: 0 2px 10px #00a6ff44;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .lives {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            font-size: 1.2rem;
+        }
+        .heart {
+            color: #ff4d6d;
+            font-size: 1.8rem;
+            line-height: 1;
+            filter: drop-shadow(0 0 8px #ff4d6daa);
+            transition: 0.2s;
+        }
+        .heart.lost {
+            opacity: 0.2;
+            filter: grayscale(1);
+            transform: scale(0.9);
+        }
+        .score-board {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            background: #0f172bcc;
+            padding: 8px 24px;
+            border-radius: 100px;
+            border: 1px solid #3a4e7a;
+            box-shadow: 0 0 15px #1e3a8a33;
+            color: #b9e0ff;
+            font-size: 1.4rem;
+            letter-spacing: 1px;
+        }
+        .score-board span {
+            color: #7dd3fc;
+            font-weight: 800;
+            font-size: 1.8rem;
+            margin-left: 6px;
+            min-width: 60px;
+            text-align: center;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 28px;
+            background: #0a0e1a;
+            box-shadow: 0 0 30px #00336655, 0 0 0 2px #2e3f70 inset;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .status {
+            margin-top: 18px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            color: #a5c9ff;
+            font-weight: 500;
+        }
+        button {
+            background: linear-gradient(145deg, #1e2b4a, #0e1628);
+            border: none;
+            color: white;
+            font-weight: 700;
+            font-size: 1.2rem;
+            padding: 12px 32px;
+            border-radius: 60px;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #0b111f, 0 10px 20px #00000066, 0 0 0 1px #3f5290 inset;
+            transition: 0.1s ease;
+            letter-spacing: 1px;
+        }
+        button:active {
+            transform: translateY(6px);
+            box-shadow: 0 2px 0 #0b111f, 0 6px 14px #00000066, 0 0 0 1px #3f5290 inset;
+        }
+        button:disabled {
+            opacity: 0.4;
+            transform: translateY(4px);
+            box-shadow: 0 4px 0 #0b111f;
+            pointer-events: none;
+        }
+        .badge {
+            background: #1a2440;
+            padding: 6px 18px;
+            border-radius: 40px;
+            font-size: 1rem;
+            border: 1px solid #3a5190;
+            color: #b3d6ff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .message {
+            text-align: center;
+            margin-top: 12px;
+            font-weight: 600;
+            min-height: 28px;
+            color: #facc15;
+            text-shadow: 0 0 12px #fbbf24;
+        }
+        .win-banner {
+            font-size: 1.8rem;
+            color: #fde047;
+            font-weight: 800;
+            animation: pulse 1.2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); text-shadow: 0 0 25px #fbbf24; }
+            100% { opacity: 0.8; transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="header">
+        <div class="lives">
+            <span>❤️</span>
+            <div id="livesDisplay" class="lives">
+                <span class="heart" id="life1">❤️</span>
+                <span class="heart" id="life2">❤️</span>
+                <span class="heart" id="life3">❤️</span>
+            </div>
+        </div>
+        <div class="score-board">
+            SCORE <span id="scoreDisplay">0</span>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas" width="700" height="500"></canvas>
+
+    <div class="status">
+        <div class="badge" id="levelBadge">LEVEL 1</div>
+        <button id="restartBtn">▶ RESTART</button>
+        <div class="badge" id="bossBadge">BOSS: OFF</div>
+    </div>
+    <div id="messageArea" class="message"></div>
+</div>
+
+<script>
+    (function(){
+        // ----- CANVAS SETUP -----
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreSpan = document.getElementById('scoreDisplay');
+        const livesDisplay = document.getElementById('livesDisplay');
+        const life1 = document.getElementById('life1');
+        const life2 = document.getElementById('life2');
+        const life3 = document.getElementById('life3');
+        const levelBadge = document.getElementById('levelBadge');
+        const bossBadge = document.getElementById('bossBadge');
+        const messageArea = document.getElementById('messageArea');
+        const restartBtn = document.getElementById('restartBtn');
+
+        // ----- GAME STATE -----
+        let score = 0;
+        let lives = 3;
+        let gameActive = true;
+        let gameCompleted = false;
+        let currentBossActive = false;
+        let bossHealth = 0;
+        let bossMaxHealth = 6;   // hits to defeat boss
+        
+        // player object
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 60,
+            radius: 18,
+            speed: 8
+        };
+
+        // projectiles from player
+        let bullets = [];
+        // enemy objects
+        let enemies = [];
+        // boss object (only one at a time)
+        let boss = null;
+
+        // control flags
+        let moveLeft = false;
+        let moveRight = false;
+        let shootCooldown = 0;
+        const SHOOT_DELAY = 12;      // frames between shots
+        let enemySpawnTimer = 0;
+        const ENEMY_SPAWN_RATE = 35; // frames
+
+        // animation loop id
+        let animationId = null;
+
+        // ----- HELPER: UPDATE UI LIVES -----
+        function updateLivesUI() {
+            life1.classList.toggle('lost', lives < 1);
+            life2.classList.toggle('lost', lives < 2);
+            life3.classList.toggle('lost', lives < 3);
+        }
+
+        // ----- RESET / START NEW GAME -----
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            gameActive = true;
+            gameCompleted = false;
+            currentBossActive = false;
+            bossHealth = 0;
+            boss = null;
+            bullets = [];
+            enemies = [];
+            player.x = canvas.width / 2;
+            player.y = canvas.height - 60;
+            moveLeft = false;
+            moveRight = false;
+            shootCooldown = 0;
+            enemySpawnTimer = 0;
+            scoreSpan.textContent = '0';
+            updateLivesUI();
+            levelBadge.textContent = 'LEVEL 1';
+            bossBadge.textContent = 'BOSS: OFF';
+            messageArea.innerHTML = '';
+            messageArea.classList.remove('win-banner');
+            
+            if (animationId) cancelAnimationFrame(animationId);
+            gameLoop();
+        }
+
+        // ----- GAME OVER (lives = 0 or other) -----
+        function gameOver() {
+            if (!gameActive) return;
+            gameActive = false;
+            messageArea.innerHTML = '💀 GAME OVER — Press RESTART';
+        }
+
+        // ----- CELEBRATION: GAME COMPLETED! -----
+        function completeGame() {
+            if (gameCompleted) return;
+            gameCompleted = true;
+            gameActive = false;
+            messageArea.innerHTML = '✨ GAME COMPLETED! ✨';
+            messageArea.classList.add('win-banner');
+            // stop any boss/enemies?
+            boss = null;
+            enemies = [];
+            currentBossActive = false;
+            bossBadge.textContent = 'BOSS: OFF';
+        }
+
+        // ----- SPAWN REGULAR ENEMY -----
+        function spawnEnemy() {
+            if (!gameActive || gameCompleted || currentBossActive) return; // no minions during boss
+            const radius = 16 + Math.random() * 10;
+            enemies.push({
+                x: Math.random() * (canvas.width - 60) + 30,
+                y: -20,
+                radius: radius,
+                speed: 1.2 + Math.random() * 1.2 + (score * 0.02),
+                hp: 1
+            });
+        }
+
+        // ----- SPAWN BOSS -----
+        function spawnBoss() {
+            if (!gameActive || currentBossActive || gameCompleted) return;
+            currentBossActive = true;
+            bossMaxHealth = 6 + Math.floor(score / 10) * 2; // gets tougher each boss
+            bossHealth = bossMaxHealth;
+            boss = {
+                x: canvas.width / 2,
+                y: 100,
+                radius: 50,
+                vx: 1.8,
+                hp: bossHealth,
+                maxHp: bossMaxHealth
+            };
+            bossBadge.textContent = 'BOSS: ON 🔥';
+        }
+
+        // ----- HANDLE SCORE INCREASE + BOSS CHECK -----
+        function addScore(amount) {
+            if (!gameActive || gameCompleted) return;
+            score += amount;
+            if (score > 30) score = 30; // cap at 30 for completion
+            scoreSpan.textContent = score;
+
+            // LEVEL DISPLAY (every 10 points = boss level)
+            const level = Math.floor(score / 10) + 1;
+            levelBadge.textContent = `LEVEL ${level}`;
+
+            // Trigger boss at 10, 20, and 30 (but if 30 -> completion first)
+            if (score >= 30) {
+                completeGame();
+                return;
+            }
+
+            // If score is exactly a multiple of 10 and there is no boss active, spawn one
+            if (score % 10 === 0 && !currentBossActive && gameActive) {
+                spawnBoss();
+            }
+        }
+
+        // ----- HANDLE PLAYER GETTING HIT -----
+        function playerHit() {
+            if (!gameActive || gameCompleted) return;
+            lives--;
+            updateLivesUI();
+            if (lives <= 0) {
+                gameOver();
+            } else {
+                // brief invulnerability would be nice — skip for simplicity, but reset position to avoid instant recluster
+                player.x = canvas.width / 2;
+                // small visual feedback
+                messageArea.innerHTML = '⚠️ hit!';
+                setTimeout(() => { if (gameActive) messageArea.innerHTML = ''; }, 300);
+            }
+        }
+
+        // ----- UPDATE GAME (called every frame) -----
+        function update() {
+            if (!gameActive || gameCompleted) return;
+
+            // player movement
+            if (moveLeft && player.x - player.radius > 0) player.x -= player.speed;
+            if (moveRight && player.x + player.radius < canvas.width) player.x += player.speed;
+
+            // shooting cooldown
+            if (shootCooldown > 0) shootCooldown--;
+            if (keys['Space'] && shootCooldown === 0 && gameActive) {
+                bullets.push({
+                    x: player.x,
+                    y: player.y - 20,
+                    radius: 5,
+                    speed: -9,
+                    damage: 1
+                });
+                shootCooldown = SHOOT_DELAY;
+            }
+
+            // update bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.y += b.speed;
+                if (b.y < -20) {
+                    bullets.splice(i, 1);
+                    continue;
+                }
+                // bullet vs boss
+                if (boss) {
+                    const dx = b.x - boss.x;
+                    const dy = b.y - boss.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < boss.radius + b.radius) {
+                        boss.hp -= 1;
+                        bullets.splice(i, 1);
+                        if (boss.hp <= 0) {
+                            // boss defeated
+                            currentBossActive = false;
+                            boss = null;
+                            bossBadge.textContent = 'BOSS: OFF';
+                            addScore(3); // bonus for defeating boss
+                            messageArea.innerHTML = '💥 Boss defeated! +3';
+                            setTimeout(() => { if (gameActive && !gameCompleted) messageArea.innerHTML = ''; }, 1000);
+                        }
+                        continue;
+                    }
+                }
+                // bullet vs enemies
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const e = enemies[j];
+                    const dx = b.x - e.x;
+                    const dy = b.y - e.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < e.radius + b.radius) {
+                        enemies.splice(j, 1);
+                        bullets.splice(i, 1);
+                        addScore(1);
+                        break;
+                    }
+                }
+            }
+
+            // update boss movement
+            if (boss && gameActive) {
+                boss.x += boss.vx;
+                if (boss.x - boss.radius < 0 || boss.x + boss.radius > canvas.width) {
+                    boss.vx *= -1;
+                }
+                // boss collision with player
+                const dx = player.x - boss.x;
+                const dy = player.y - boss.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < player.radius + boss.radius) {
+                    playerHit();
+                    // also push boss a bit? Not necessary, just avoid repeated hits
+                    // reposition boss slightly to avoid immediate re-collision
+                    boss.x += (boss.vx > 0 ? -20 : 20);
+                }
+            }
+
+            // update enemies
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                e.y += e.speed;
+                // remove if off screen
+                if (e.y - e.radius > canvas.height + 30) {
+                    enemies.splice(i, 1);
+                    continue;
+                }
+                // collision with player
+                const dx = player.x - e.x;
+                const dy = player.y - e.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < player.radius + e.radius) {
+                    enemies.splice(i, 1);
+                    playerHit();
+                }
+            }
+
+            // spawn enemies (only if no boss and active)
+            if (!currentBossActive && gameActive && !gameCompleted) {
+                if (enemySpawnTimer <= 0) {
+                    spawnEnemy();
+                    enemySpawnTimer = ENEMY_SPAWN_RATE + Math.floor(Math.random() * 15);
+                } else {
+                    enemySpawnTimer--;
+                }
+            }
+
+            // check lives again (if player died from collisions)
+            if (lives <= 0 && gameActive) {
+                gameOver();
+            }
+        }
+
+        // ----- RENDERING -----
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // background star effect
+            ctx.fillStyle = '#0b111f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < 80; i++) {
+                const sx = (i * 193) % canvas.width;
+                const sy = (i * 97 + Date.now() * 0.01) % canvas.height;
+                ctx.fillStyle = `rgba(200, 220, 255, ${0.4 + Math.sin(i + Date.now() * 0.002) * 0.2})`;
+                ctx.beginPath();
+                ctx.arc(sx, sy, 1.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // draw player ship
+            ctx.shadowColor = '#3b82f6';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = '#7dd3fc';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#bae6fd';
+            ctx.beginPath();
+            ctx.arc(player.x - 6, player.y - 6, 6, 0, Math.PI * 2);
+            ctx.fill();
+            // thruster
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = '#f97316';
+            ctx.beginPath();
+            ctx.moveTo(player.x - 10, player.y + 16);
+            ctx.lineTo(player.x, player.y + 28);
+            ctx.lineTo(player.x + 10, player.y + 16);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // bullets
+            ctx.shadowColor = '#facc15';
+            ctx.shadowBlur = 12;
+            bullets.forEach(b => {
+                ctx.fillStyle = '#fde047';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // enemies
+            enemies.forEach(e => {
+                ctx.shadowColor = '#ef4444';
+                ctx.shadowBlur = 16;
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#7f1d1d';
+                ctx.beginPath();
+                ctx.arc(e.x - 5, e.y - 5, 5, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // boss
+            if (boss) {
+                ctx.shadowColor = '#d946ef';
+                ctx.shadowBlur = 35;
+                ctx.fillStyle = '#c084fc';
+                ctx.beginPath();
+                ctx.arc(boss.x, boss.y, boss.radius, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#6b21a8';
+                ctx.beginPath();
+                ctx.arc(boss.x - 15, boss.y - 15, 14, 0, Math.PI*2);
+                ctx.fill();
+                // health bar
+                const barWidth = 120;
+                const barX = boss.x - barWidth/2;
+                const barY = boss.y - boss.radius - 20;
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(barX, barY, barWidth, 12);
+                ctx.fillStyle = '#f43f5e';
+                ctx.fillRect(barX, barY, barWidth * (boss.hp / boss.maxHp), 12);
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 12px "Segoe UI"';
+                ctx.textAlign = 'center';
+                ctx.fillText('BOSS', boss.x, barY - 6);
+            }
+
+            ctx.shadowBlur = 0;
+            ctx.textAlign = 'left';
+
+            // if game completed, overlay message
+            if (gameCompleted) {
+                ctx.font = 'bold 42px "Segoe UI", sans-serif';
+                ctx.fillStyle = 'rgba(253, 224, 71, 0.9)';
+                ctx.shadowColor = '#facc15';
+                ctx.shadowBlur = 30;
+                ctx.textAlign = 'center';
+                ctx.fillText('✨ GAME COMPLETED ✨', canvas.width/2, canvas.height/2);
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // ----- GAME LOOP -----
+        function gameLoop() {
+            update();
+            draw();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // ----- INPUT HANDLING -----
+        const keys = {};
+
+        function handleKeyDown(e) {
+            const key = e.key;
+            if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+                moveLeft = true;
+                e.preventDefault();
+            } else if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+                moveRight = true;
+                e.preventDefault();
+            } else if (key === ' ' || key === 'Space') {
+                keys['Space'] = true;
+                e.preventDefault();
+            }
+        }
+
+        function handleKeyUp(e) {
+            const key = e.key;
+            if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+                moveLeft = false;
+                e.preventDefault();
+            } else if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+                moveRight = false;
+                e.preventDefault();
+            } else if (key === ' ' || key === 'Space') {
+                keys['Space'] = false;
+                e.preventDefault();
+            }
+        }
+
+        // mobile / touch support
+        function handleTouchStart(e) {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const touchX = (e.touches[0].clientX - rect.left) * scaleX;
+            if (touchX < player.x - 20) moveLeft = true;
+            else if (touchX > player.x + 20) moveRight = true;
+            // tap to shoot? we can shoot on touchstart for convenience
+            if (shootCooldown === 0 && gameActive && !gameCompleted) {
+                bullets.push({
+                    x: player.x,
+                    y: player.y - 20,
+                    radius: 5,
+                    speed: -9,
+                    damage: 1
+                });
+                shootCooldown = SHOOT_DELAY;
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            moveLeft = false;
+            moveRight = false;
+        }
+
+        // ----- ATTACH EVENT LISTENERS -----
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('keyup', handleKeyUp);
+        canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.addEventListener('touchend', handleTouchEnd);
+        canvas.addEventListener('touchcancel', handleTouchEnd);
+
+        // restart button
+        restartBtn.addEventListener('click', () => {
+            resetGame();
+        });
+
+        // start game on load
+        resetGame();
+    })();
+</script>
+</body>
+</html>
