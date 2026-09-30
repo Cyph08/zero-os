@@ -306,6 +306,53 @@ classifier = IntentClassifier()
 
 
 # ---------------------------------------------------------------------------
+# Build follow-up detection
+# ---------------------------------------------------------------------------
+
+# A request for a whole new artifact says "a/an/another/new <thing>" — "make me a
+# snake game". A follow-up names features instead — "create levels with three lives",
+# "make it faster", "end the game at 30 points" ("the", not "a"). That article is the
+# cheapest reliable signal between the two.
+_FRESH_ARTIFACT_RE = re.compile(
+    r"\b(?:a|an|another|new)\s+(?:\w+\s+){0,2}"
+    r"(?:game|app|application|website|web\s?site|web\s?app|webpage|web\s?page|"
+    r"site|page|tool|dashboard|calculator|clone|simulator)\b"
+)
+_FRESH_PHRASES = ("from scratch", "start over", "start again", "forget that")
+
+
+def is_build_followup(history: str, query: str) -> bool:
+    """
+    True when a build happened earlier in this conversation and this request
+    modifies it rather than asking for something new.
+
+    Lives here because BOTH the CEO (to route the request to Forge at all) and
+    Forge (to edit the real file instead of generating a new one) have to agree.
+    They each used to guess from their own keyword list on the current sentence
+    alone, so "create levels with three lives each" produced a second, unrelated
+    game and "make it faster" reached no agent at all — while the answer was
+    sitting in the conversation the whole time.
+
+    Args:
+        history: Recent conversation text (hot memory, via the context bus).
+        query:   The current request.
+
+    Returns:
+        True to treat this as an edit of the last build.
+    """
+    if not history:
+        return False
+    if "Zero Tech" not in history and "saved it to" not in history:
+        return False
+    q = query.lower()
+    if "agent" in q:                       # "improve the research agent" is Vanta's job
+        return False
+    if any(m in q for m in _FRESH_PHRASES) or _FRESH_ARTIFACT_RE.search(q):
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # CLI test
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":

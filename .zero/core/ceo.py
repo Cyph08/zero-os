@@ -25,7 +25,8 @@ import re
 
 from core.bus import ContextBus
 from core.errlog import log_error
-from core.intent import IntentClassifier, IntentResult, RiskLevel, classifier
+from core.intent import (IntentClassifier, IntentResult, RiskLevel, classifier,
+                         is_build_followup)
 from core.llm import chat, detect_provider
 from core.personas import persona_state, PERSONAS
 from core.quality import grade_and_fix, assess_depth, iters_for
@@ -168,7 +169,11 @@ class CEOAgent:
             _log_action(ctx)
             return ctx
 
-        # 0b. Save user input to hot memory immediately
+        # 0b. Snapshot the conversation BEFORE adding this turn, then save the input.
+        #     Agents only ever received the bare current message, so any follow-up
+        #     ("now add levels to it") was handled as a brand-new request — Forge
+        #     built a second, unrelated game instead of editing the first.
+        history = hot_memory.as_context_string(n=10)
         hot_memory.add_user(user_input)
 
         # 1. Intent classification + risk gate.
@@ -181,6 +186,10 @@ class CEOAgent:
         else:
             intent, allowed = self._classifier.gate(user_input)
         bus = ContextBus()   # fresh whiteboard for this request only
+        if history:
+            # Every agent already receives the bus, so this is how history reaches
+            # them without changing the run(query, bus) contract.
+            bus.publish("ceo", "recent_conversation", history)
         ctx = TaskContext(user_input=user_input, intent=intent, bus=bus)
 
         if not allowed:
@@ -343,7 +352,14 @@ class CEOAgent:
         # weather dashboard). Self-contained builds (games, calculators) skip
         # research and go straight to Forge so they stay fast. Either way, the
         # chatty analysis agents never hijack a build.
-        if self._is_build_request(user_input) or self._is_iterate_request(user_input):
+        # History-aware: "make it faster" names no artifact and matched no keyword
+        # list, so it used to reach NO agent at all and the CEO answered directly —
+        # claiming it had edited the game when nothing had run.
+        followup = is_build_followup(
+            bus.get("recent_conversation", "") if bus else "", user_input
+        )
+        if (self._is_build_request(user_input) or self._is_iterate_request(user_input)
+                or followup):
             code_m = self._registry.get("code")
             if code_m is not None:
                 chain: list[AgentManifest] = []
@@ -732,7 +748,14 @@ class CEOAgent:
             f"Respond as {persona.name}. Direct, natural, no markdown. "
             f"Give the real answer — don't meta-commentate or narrate yourself. "
             f"{persona.delivery_note} "
-            f"Stay consistent with the conversation. Say it the way you'd say it out loud."
+            f"Stay consistent with the conversation. Say it the way you'd say it out loud. "
+            # No agent ran on this path, so nothing was actually done. With build
+            # history in the prompt the model happily claimed it had just edited the
+            # game ("I baked in higher frame rates") when no file was touched.
+            f"IMPORTANT: no tools ran for this message — you have NOT done anything, "
+            f"changed any file or built anything just now. Never claim you did. "
+            f"If Cyph is asking for something to be done, say what you'll do, not that "
+            f"it's done."
         )
 
         # No agents fired here, so a direct request is either small talk or a

@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from core.intent import is_build_followup
 from core.llm import chat
 
 if TYPE_CHECKING:
@@ -152,6 +154,35 @@ def _wants_iteration(query: str) -> bool:
         " site", " page", " html", " app", " ui ", "it ", "this", "that",
     )
     return any(c in q for c in change) and any(a in q for a in artifact)
+
+
+def _build_from_history(history: str) -> "Path | None":
+    """
+    The build this conversation actually produced, taken from the history itself.
+
+    _find_last_build() guesses by matching the query against FILENAMES, which
+    misfires badly: "create levels with three lives each" scored 4 words against
+    a stale levels-three-lives-each-after.html from a previous broken session and
+    edited that instead of the snake game built one message earlier. The
+    conversation knows the answer, so ask it rather than guessing.
+
+    Args:
+        history: Recent conversation text from the bus.
+
+    Returns:
+        Path to the most recently mentioned build that still exists, or None.
+    """
+    if not history:
+        return None
+    import re
+    # Match the saved-path confirmations Zero sends back ("saved it to <path>").
+    # Paths contain spaces ("Zero Tech"), so stop only at a quote or newline.
+    hits = re.findall(r"[A-Za-z]:\\[^\"'\n]+?\.html", history)
+    for raw in reversed(hits):
+        path = Path(raw.rstrip(".,;:"))
+        if path.is_file():
+            return path
+    return None
 
 
 def _find_last_build(query: str = "") -> "Path | None":
@@ -553,7 +584,8 @@ def _slugify(text: str, default: str = "app") -> str:
     return stem[:48] or default
 
 
-def _save_and_open(html: str, query: str, filename_hint: str) -> tuple[str, bool]:
+def _save_and_open(html: str, query: str, filename_hint: str,
+                   editing: bool = False) -> tuple[str, bool]:
     """
     Write a built web artifact into the Zero Tech folder and open it in the browser.
 
@@ -561,6 +593,9 @@ def _save_and_open(html: str, query: str, filename_hint: str) -> tuple[str, bool
         html:          The full HTML document to write.
         query:         The user query (used to derive a filename if no hint).
         filename_hint: Optional FILENAME: suggestion from the model.
+        editing:       True when this is an edit of an existing build — keep the
+                       name and leave a .bak, instead of stacking another
+                       _<timestamp> onto it every single turn.
 
     Returns:
         (absolute_path, opened) — path is "" if writing failed; opened is True
@@ -580,7 +615,10 @@ def _save_and_open(html: str, query: str, filename_hint: str) -> tuple[str, bool
         TECH_DIR.mkdir(parents=True, exist_ok=True)
         path = TECH_DIR / name
         if path.exists():
-            path = TECH_DIR / f"{path.stem}_{int(time.time())}{path.suffix}"
+            if editing:
+                path.replace(path.with_suffix(".html.bak"))   # previous version recoverable
+            else:
+                path = TECH_DIR / f"{path.stem}_{int(time.time())}{path.suffix}"
         path.write_text(html, encoding="utf-8")
         logger.info(f"[forge] Saved web app → {path}")
     except OSError as exc:
@@ -666,11 +704,18 @@ def run(query: str, bus: "ContextBus | None" = None) -> CodeResult:
     action_type = _detect_action(query)
     app_build = _wants_app_build(query)
 
-    # Iteration: "fix it / the game won't start / make the website better" — re-open
-    # the actual file Forge last built and edit THAT code, instead of regenerating a
-    # new app blind. This is Forge using its memory of what it shipped.
-    iterate = _wants_iteration(query)
-    last_build = _find_last_build(query) if iterate else None
+    # Conversation history, published to the bus by the CEO. Without it Forge saw
+    # only the current sentence, so "now add levels" had no idea what "it" was.
+    history = bus.get("recent_conversation", "") if bus is not None else ""
+
+    # Iteration: "fix it / the game won't start / make the website better", or any
+    # follow-up to a build earlier in this conversation — re-open the actual file
+    # Forge last built and edit THAT code instead of regenerating a new app blind.
+    iterate = _wants_iteration(query) or is_build_followup(history, query)
+    # ponytail: history wins over the filename guess. Naming a DIFFERENT old project
+    # mid-conversation would still pick this conversation's build — match the name
+    # against history's paths too if that ever bites.
+    last_build = (_build_from_history(history) or _find_last_build(query)) if iterate else None
     iterate_filename = ""
     logger.info(
         f"[forge] Action: {action_type} (app_build={app_build}, "
@@ -707,6 +752,16 @@ def run(query: str, bus: "ContextBus | None" = None) -> CodeResult:
     else:
         prompt = _build_prompt(query, action_type, brainstorm_context,
                                app_build=app_build, research_context=research_context)
+    if history:
+        # Prepended to both branches: "it" and "the game" resolve here, and every
+        # requirement from earlier turns is carried into the new file.
+        prompt = (
+            "Recent conversation with Cyph — 'it' / 'the game' / 'the app' means what "
+            "was built earlier here. Carry forward EVERY requirement he has already "
+            "given, not just the latest sentence:\n"
+            f"{history}\n\n"
+        ) + prompt
+
     model_used = ""
     cost_usd = 0.0
     response_text = ""
@@ -787,7 +842,9 @@ def run(query: str, bus: "ContextBus | None" = None) -> CodeResult:
             code_block = html  # the file IS the artifact
             # When iterating, keep the original file's name so versions stay grouped.
             name_hint = iterate_filename or filename_hint
-            saved_path, opened = _save_and_open(html, query, name_hint)
+            saved_path, opened = _save_and_open(
+                html, query, name_hint, editing=last_build is not None
+            )
             if saved_path:
                 where = saved_path
                 tail = (
@@ -878,6 +935,23 @@ def run(query: str, bus: "ContextBus | None" = None) -> CodeResult:
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import sys
+
+    # Offline check for the follow-up logic — no LLM call, no network.
+    _built = r"[USER]: make me a snake game" "\n" r"[ZERO]: saved it to K:\Zero\Zero Tech\snake.html"
+    # Follow-ups name FEATURES -> edit the existing build.
+    assert is_build_followup(_built, "create levels with three lives each")
+    assert is_build_followup(_built, "make it harder")
+    assert is_build_followup(_built, "end the game at 30 points")
+    assert is_build_followup(_built, "add a scoreboard and sound effects")
+    # Whole new artifacts ("a <thing>") -> fresh file, history still carried.
+    assert not is_build_followup(_built, "make me a snake game")
+    assert not is_build_followup(_built, "build me a new racing game")
+    assert not is_build_followup(_built, "create a weather dashboard")
+    assert not is_build_followup(_built, "redo it from scratch")
+    # No prior build in the conversation -> nothing to iterate on.
+    assert not is_build_followup("", "create levels with three lives each")
+    assert _build_from_history(_built) is None or _build_from_history(_built).suffix == ".html"
+
     q = " ".join(sys.argv[1:]) or "Write a Python function that takes an EEG signal array and returns the power spectral density for each channel using scipy"
     logging.basicConfig(level=logging.INFO)
     result = run(q)

@@ -1,18 +1,26 @@
 """
 memory/hot.py — Zero OS Session RAM Context
 
-In-memory store for the current session only. Holds recent messages,
-agent outputs, and intent history. Cleared on every restart.
+Recent messages, agent outputs and intent history — Zero's short-term
+working memory.
 
-Think of this as Zero's short-term working memory — what happened
-in the last few minutes of this conversation.
+Mirrored to hot_session.jsonl so it SURVIVES A RESTART. Zero autostarts on
+login, so without this every reboot wiped the conversation and Telegram
+follow-ups ("add levels to it") landed with no idea what "it" was.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+_STORE = Path(__file__).parent / "hot_session.jsonl"
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +67,7 @@ class HotMemory:
         self._entries: list[MemoryEntry] = []
         self._max_entries = max_entries
         self._session_start = time.time()
+        self._load()
 
     # ------------------------------------------------------------------
     # Write
@@ -93,6 +102,7 @@ class HotMemory:
         # Drop oldest if over limit
         if len(self._entries) > self._max_entries:
             self._entries = self._entries[-self._max_entries:]
+        self._append_to_disk(entry)
         return entry
 
     def add_user(self, content: str) -> MemoryEntry:
@@ -163,10 +173,60 @@ class HotMemory:
     # Housekeeping
     # ------------------------------------------------------------------
 
+    def _append_to_disk(self, entry: MemoryEntry) -> None:
+        """Mirror one entry to the session file. Never raises — memory is best-effort."""
+        try:
+            with _STORE.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry.to_dict(), ensure_ascii=False) + "\n")
+        except OSError as exc:
+            logger.warning(f"[hot] Could not persist entry: {exc}")
+
+    def _load(self) -> None:
+        """
+        Restore the tail of the last session from disk, then rewrite the file with
+        only what was kept so it can't grow without bound.
+        """
+        if not _STORE.exists():
+            return
+        kept: list[MemoryEntry] = []
+        try:
+            for line in _STORE.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue      # a half-written line from a hard kill
+                kept.append(MemoryEntry(
+                    role=d.get("role", "user"),
+                    content=d.get("content", ""),
+                    agent=d.get("agent", ""),
+                    timestamp=d.get("timestamp", 0.0),
+                    metadata=d.get("metadata") or {},
+                ))
+        except OSError as exc:
+            logger.warning(f"[hot] Could not read session file: {exc}")
+            return
+        self._entries = kept[-self._max_entries:]
+        if len(kept) > self._max_entries:
+            try:
+                _STORE.write_text(
+                    "".join(json.dumps(e.to_dict(), ensure_ascii=False) + "\n"
+                            for e in self._entries),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass          # growth is cosmetic; recall already works
+        logger.info(f"[hot] Restored {len(self._entries)} entries from previous session")
+
     def clear(self) -> None:
-        """Wipe all entries. Called on session reset."""
+        """Wipe all entries, on disk too. Called on session reset."""
         self._entries.clear()
         self._session_start = time.time()
+        try:
+            _STORE.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     def stats(self) -> dict[str, Any]:
         """Return session stats for logging."""
@@ -193,3 +253,42 @@ class HotMemory:
 # ---------------------------------------------------------------------------
 
 hot_memory = HotMemory(max_entries=50)
+
+
+# ---------------------------------------------------------------------------
+# Self-check: python -m memory.hot
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        _STORE = Path(tmp) / "session.jsonl"          # type: ignore[assignment]
+
+        a = HotMemory(max_entries=4)
+        a.add_user("make me a snake game")
+        a.add_zero("Built it, saved to Zero Tech.")
+        assert len(a) == 2
+
+        # The whole point: a NEW instance (i.e. after a restart) still has the turns.
+        b = HotMemory(max_entries=4)
+        assert len(b) == 2, f"lost history across restart: {len(b)}"
+        assert "snake" in b.as_context_string()
+
+        # Bounded: the tail is kept and the file is trimmed to it.
+        for i in range(6):
+            b.add_user(f"turn {i}")
+        c = HotMemory(max_entries=4)
+        assert len(c) == 4, len(c)
+        assert "turn 5" in c.as_context_string()
+        assert "snake" not in c.as_context_string()
+
+        # A half-written line from a hard kill must not break the load.
+        with _STORE.open("a", encoding="utf-8") as f:
+            f.write('{"role": "user", "cont')
+        assert len(HotMemory(max_entries=4)) == 4
+
+        c.clear()
+        assert not _STORE.exists()
+
+    print("hot memory self-check passed — history survives a restart")

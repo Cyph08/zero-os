@@ -29,6 +29,7 @@ trash/
 *.db.backup-*
 *.sqlite3
 .zero/memory/chroma_db/
+.zero/memory/hot_session.jsonl
 .zero/memory/health_log.json
 .zero/memory/schedule.json
 .zero/skills/skills.db
@@ -57,3 +58,7 @@ dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+Zero Tech/*.html.bak
+
+# Obsidian per-machine config and themes (the notes themselves ARE tracked)
+Zero OS/.obsidian/

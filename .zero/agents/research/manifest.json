@@ -36,8 +36,7 @@
   "risk_level": "read",
   "collaborates_with": [
     "career",
-    "code",
-    "learning"
+    "code"
   ],
   "model_preference": "claude-sonnet",
   "entry_point": "agents/research/run.py",
