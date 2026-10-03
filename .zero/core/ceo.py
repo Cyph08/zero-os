@@ -174,6 +174,10 @@ class CEOAgent:
         #     ("now add levels to it") was handled as a brand-new request — Forge
         #     built a second, unrelated game instead of editing the first.
         history = hot_memory.as_context_string(n=10)
+        # The follow-up decision needs the PREVIOUS turn only. Judging it from all
+        # ten entries meant one build hijacked every later question — and since hot
+        # memory now survives restarts, it did so permanently.
+        last_exchange = hot_memory.as_context_string(n=2)
         hot_memory.add_user(user_input)
 
         # 1. Intent classification + risk gate.
@@ -190,6 +194,8 @@ class CEOAgent:
             # Every agent already receives the bus, so this is how history reaches
             # them without changing the run(query, bus) contract.
             bus.publish("ceo", "recent_conversation", history)
+        if last_exchange:
+            bus.publish("ceo", "last_exchange", last_exchange)
         ctx = TaskContext(user_input=user_input, intent=intent, bus=bus)
 
         if not allowed:
@@ -356,7 +362,7 @@ class CEOAgent:
         # list, so it used to reach NO agent at all and the CEO answered directly —
         # claiming it had edited the game when nothing had run.
         followup = is_build_followup(
-            bus.get("recent_conversation", "") if bus else "", user_input
+            bus.get("last_exchange", "") if bus else "", user_input
         )
         if (self._is_build_request(user_input) or self._is_iterate_request(user_input)
                 or followup):

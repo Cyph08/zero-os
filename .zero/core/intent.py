@@ -321,35 +321,60 @@ _FRESH_ARTIFACT_RE = re.compile(
 _FRESH_PHRASES = ("from scratch", "start over", "start again", "forget that")
 
 
-def is_build_followup(history: str, query: str) -> bool:
+# A follow-up has to actually be ABOUT the build: either it points at it ("make
+# IT faster", "end THE GAME at 30 points") or it asks for a change. Without this
+# the rule swallowed everything — "Today's India Pakistan match results" was
+# routed to Forge and edited the snake game.
+_ARTIFACT_REF_RE = re.compile(
+    r"\b(?:it|its|this|that|the\s+(?:game|app|website|site|page|level|levels|"
+    r"score|player|snake|build|code|file))\b"
+)
+_CHANGE_WORDS = (
+    "add", "remove", "delete", "change", "replace", "rename", "fix", "debug",
+    "improve", "better", "increase", "decrease", "more", "less", "faster",
+    "slower", "harder", "easier", "bigger", "smaller", "brighter", "darker",
+    "broken", "not working", "doesn't work", "isn't working", "won't start",
+    "instead", "also", "tweak", "adjust", "redo", "undo",
+)
+
+
+def is_build_followup(last_exchange: str, query: str) -> bool:
     """
-    True when a build happened earlier in this conversation and this request
-    modifies it rather than asking for something new.
+    True when the PREVIOUS turn built something and this request modifies it.
 
     Lives here because BOTH the CEO (to route the request to Forge at all) and
     Forge (to edit the real file instead of generating a new one) have to agree.
     They each used to guess from their own keyword list on the current sentence
     alone, so "create levels with three lives each" produced a second, unrelated
-    game and "make it faster" reached no agent at all — while the answer was
-    sitting in the conversation the whole time.
+    game and "make it faster" reached no agent at all.
+
+    Three conditions, all required — any one of them missing and this is an
+    ordinary request that should route normally:
+
+    1. The build is in the IMMEDIATELY PRECEDING exchange. Searching all of hot
+       memory meant one game built ten messages ago hijacked every later
+       question, and because hot memory now survives restarts it did so forever.
+    2. The request points at that build, or asks for a change.
+    3. It is not asking for a whole new artifact, or to start over.
 
     Args:
-        history: Recent conversation text (hot memory, via the context bus).
-        query:   The current request.
+        last_exchange: The previous turn only — `hot_memory.as_context_string(n=2)`,
+                       NOT the full history.
+        query:         The current request.
 
     Returns:
         True to treat this as an edit of the last build.
     """
-    if not history:
+    if not last_exchange:
         return False
-    if "Zero Tech" not in history and "saved it to" not in history:
+    if "Zero Tech" not in last_exchange and "saved it to" not in last_exchange:
         return False
     q = query.lower()
     if "agent" in q:                       # "improve the research agent" is Vanta's job
         return False
     if any(m in q for m in _FRESH_PHRASES) or _FRESH_ARTIFACT_RE.search(q):
         return False
-    return True
+    return bool(_ARTIFACT_REF_RE.search(q)) or any(c in q for c in _CHANGE_WORDS)
 
 
 # ---------------------------------------------------------------------------

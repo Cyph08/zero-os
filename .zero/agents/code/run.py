@@ -711,7 +711,8 @@ def run(query: str, bus: "ContextBus | None" = None) -> CodeResult:
     # Iteration: "fix it / the game won't start / make the website better", or any
     # follow-up to a build earlier in this conversation — re-open the actual file
     # Forge last built and edit THAT code instead of regenerating a new app blind.
-    iterate = _wants_iteration(query) or is_build_followup(history, query)
+    last_exchange = bus.get("last_exchange", "") if bus is not None else ""
+    iterate = _wants_iteration(query) or is_build_followup(last_exchange, query)
     # ponytail: history wins over the filename guess. Naming a DIFFERENT old project
     # mid-conversation would still pick this conversation's build — match the name
     # against history's paths too if that ever bites.
