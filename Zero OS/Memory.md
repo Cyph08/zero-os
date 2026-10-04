@@ -11,6 +11,8 @@ Three tiers, plus an Obsidian mirror. All under `K:\Zero\.zero\memory\`.
 | **Hot** | RAM + `hot_session.jsonl` | 50 entries, **survives restart** | every request |
 | **Warm** | Redis, in-memory fallback | 7 days | *nothing* — see below |
 | **Cold** | ChromaDB + SQLite FTS5 | permanent | semantic + keyword recall |
+| **Notes** | your vaults + PDFs, chunked | synced each start | relevant chunks only |
+| **Feedback** | your 👍/👎 | permanent | similar questions |
 
 ## Hot — `memory/hot.py`
 
@@ -61,6 +63,69 @@ memory's recent turns.
 `K:\Zero\Zero Memory\` as a `.md` file with YAML frontmatter and tags — the
 human-readable source of truth. The JSON store stays as the index. `rebuild_vault()`
 regenerates it.
+
+---
+
+## Your notes
+
+Zero reads and remembers your Obsidian vaults and PDFs — set in `.env`:
+
+```
+ZERO_KNOWLEDGE_DIRS=K:\Dissertation;K:\foresight;K:\Zero\Zero OS
+```
+
+Synced on every backend start: every `.md` and `.pdf`, recursively, split into
+~1,000-character chunks (the embedder only reads about that much, so whole notes lost
+everything past the first paragraph or two). Only changed files are re-read. **Delete a
+note, or remove a folder from the list, and it leaves Zero's memory on the next start.**
+Virtualenvs and caches are skipped — `K:\foresight\.venv` had contributed 33 package files
+against your 8 real notes.
+
+First sync: 71 files, ~1,500 chunks, ~9 minutes on CPU. After that, seconds.
+
+### Only when relevant
+
+The keyword index matches any word, so every note "matches" every message. Notes reach
+the prompt only if they're semantically close — **cosine distance ≤ 0.60**
+(`ZERO_NOTES_MAX_DISTANCE`). Measured on your vaults:
+
+| | distance |
+|---|---|
+| questions about your dissertation | 0.25 – 0.51 |
+| cricket, weather, gym, email, news, file search | 0.70 – 0.82 |
+
+So *"what's my dissertation about"* gets your notes and *"India Pakistan result"* sends
+**none** of them to the cloud model.
+
+> [!warning] Privacy
+> When a note is relevant, an excerpt of it is sent to DeepSeek (or Kimi) with the
+> question. That's how it answers from your notes. Remove a folder from
+> `ZERO_KNOWLEDGE_DIRS` to stop that.
+
+---
+
+## The feedback loop
+
+Every Telegram answer has **👍 / 👎** under it. That's how Zero improves over time —
+without retraining a model, because its brain is a hosted API whose weights can't be
+trained. `core/feedback.py`:
+
+| You tap | Zero does |
+|---|---|
+| 👍 | Similar future questions see this answer as *"match what worked"*. On a multi-agent answer, it **learns the route** as a skill so next time skips the routing step |
+| 👎 | Similar future questions see it as *"don't repeat what went wrong"*. **Deletes the learned route** that produced it |
+| either | Logged to `logs/feedback.jsonl` with the question and answer — a preference dataset, which is what fine-tuning the local model would need later |
+
+Tapping again overwrites — the latest rating wins. Buttons work on old messages after any
+number of restarts: they carry the cold-memory id, not state held in the bot.
+
+Ratings steer only **genuinely similar** questions (distance ≤ 0.35).
+
+> [!bug] Why skills are only learned from 👍 now
+> They used to be learned from every multi-agent answer — including failures. The broken
+> cricket reply became a skill called `live_score_handling` whose hint was *"acknowledge
+> inability to provide live scores, suggest Cricbuzz"*. Every future score question would
+> have been told to say it couldn't find scores, even after the search was fixed.
 
 ---
 

@@ -112,6 +112,22 @@ cd K:\Zero\.zero && K:\Zero\.venv\Scripts\python.exe -c "import ast; ast.parse(o
 cd K:\Zero\.zero && K:\Zero\.venv\Scripts\python.exe -c "import api.main; print('imports OK')"
 ```
 
+### Tests
+
+Routing has regressed twice. Run this after touching `core/intent.py`, `core/ceo.py` or an
+agent's routing — offline, one second:
+
+```bash
+cd K:\Zero\.zero && K:\Zero\.venv\Scripts\python.exe tests\test_routing.py
+```
+
+The notes + feedback loop, live through the real CEO (needs keys, ~1 min, about a cent;
+cleans up everything it creates):
+
+```bash
+cd K:\Zero\.zero && set PYTHONIOENCODING=utf-8 && K:\Zero\.venv\Scripts\python.exe tests\e2e_learning.py
+```
+
 ### Self-checks that actually assert something
 
 ```bash

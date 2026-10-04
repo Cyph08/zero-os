@@ -37,6 +37,18 @@ Just say what you want. No commands, no syntax — Zero picks the specialist.
 | "India vs Pakistan result" | [[Herald]] searches it and gives you the score |
 | *send a voice note* | Whisper transcribes it, then it's handled like any message |
 
+### 👍 / 👎 — teach it
+
+Every answer has 👍 and 👎 under it. Use them. Zero repeats what you 👍, avoids what you
+👎, learns routes only from answers you liked, and drops routes that produced answers you
+didn't. It's the only way it improves over time — see [[Memory#The feedback loop]].
+
+### What it knows about you
+
+Your **Dissertation** and **foresight** vaults (including the PDFs) and this vault. Ask
+*"what did I conclude about data reduction"* and it answers from your notes. Unrelated
+questions don't touch them. Change the list in [[Configuration]].
+
 ### Commands
 
 `/help` · `/agents` · `/health` · `/status` · `/persona v` · `/persona zero`

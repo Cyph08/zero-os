@@ -15,7 +15,10 @@ which runs entirely on CPU — no GPU needed for memory.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -31,6 +34,65 @@ _DB_PATH = Path(__file__).parent.parent / "memory" / "chroma_db"
 COLLECTION_INTERACTIONS = "interactions"
 COLLECTION_RESEARCH     = "research"
 COLLECTION_KNOWLEDGE    = "knowledge"
+COLLECTION_FEEDBACK     = "feedback"     # Cyph's 👍/👎 on past answers
+
+
+# ---------------------------------------------------------------------------
+# Knowledge ingestion helpers — Cyph's Obsidian vaults and PDFs
+# ---------------------------------------------------------------------------
+
+_KB_EXTENSIONS = (".md", ".pdf")
+# Code projects carry virtualenvs full of third-party docs: K:\foresight's .venv
+# alone contributed 33 files (Hugging Face model-card templates, licences,
+# matplotlib icon PDFs) against 8 of Cyph's own notes.
+_KB_SKIP_DIRS = {".obsidian", ".trash", ".git", "node_modules", "__pycache__",
+                 ".venv", "venv", "site-packages", ".pytest_cache", ".mypy_cache",
+                 ".ruff_cache", ".tox"}
+# The embedder (all-MiniLM-L6-v2) reads ~256 tokens, about 1,000 characters.
+# Storing whole notes meant everything past the first paragraph or two was
+# invisible to semantic recall, so notes are split into chunks that fit.
+_CHUNK_CHARS = 1000
+_CHUNK_OVERLAP = 150
+
+
+def knowledge_dirs() -> list[Path]:
+    """
+    Folders Zero learns from. ZERO_KNOWLEDGE_DIRS in .env, semicolon-separated.
+    Removing a folder from the list removes its notes from memory on the next sync.
+    """
+    raw = os.getenv("ZERO_KNOWLEDGE_DIRS", "")
+    dirs = [Path(d.strip()) for d in raw.split(";") if d.strip()]
+    return dirs or [Path(__file__).parent.parent.parent / "Zero Memory"]
+
+
+def _chunk(text: str, size: int = _CHUNK_CHARS, overlap: int = _CHUNK_OVERLAP) -> list[str]:
+    """Split on paragraph boundaries into chunks of about `size` characters."""
+    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    chunks: list[str] = []
+    cur = ""
+    for para in paras:
+        while len(para) > size:            # PDF text often has no paragraph breaks
+            if cur:
+                chunks.append(cur)
+                cur = ""
+            chunks.append(para[:size])
+            para = para[size - overlap:]
+        if cur and len(cur) + len(para) + 2 > size:
+            chunks.append(cur)
+            cur = cur[-overlap:] + "\n\n" + para   # carry a little context forward
+        else:
+            cur = f"{cur}\n\n{para}" if cur else para
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def _read_doc(path: Path) -> str:
+    """Text of a .md or .pdf file."""
+    if path.suffix.lower() == ".pdf":
+        from pypdf import PdfReader
+        return "\n\n".join((page.extract_text() or "") for page in PdfReader(str(path)).pages)
+    return path.read_text(encoding="utf-8", errors="ignore")
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +129,8 @@ class ColdMemory:
             self._db_path.mkdir(parents=True, exist_ok=True)
             self._client = chromadb.PersistentClient(path=str(self._db_path))
             # Pre-load collections
-            for name in (COLLECTION_INTERACTIONS, COLLECTION_RESEARCH, COLLECTION_KNOWLEDGE):
+            for name in (COLLECTION_INTERACTIONS, COLLECTION_RESEARCH, COLLECTION_KNOWLEDGE,
+                         COLLECTION_FEEDBACK):
                 self._collections[name] = self._client.get_or_create_collection(
                     name=name,
                     metadata={"hnsw:space": "cosine"},   # cosine similarity
@@ -209,53 +272,85 @@ class ColdMemory:
         )
         return doc_id
 
-    def sync_vault(self, vault_dir: "Path | None" = None, max_chars: int = 4000) -> int:
+    def sync_vault(self, dirs: "list[Path] | None" = None) -> int:
         """
-        Pull the Obsidian vault (K:\\Zero\\Zero Memory) INTO cold memory.
+        Pull Cyph's notes and PDFs INTO cold memory, chunked, so Zero can recall them.
 
-        The vault was previously write-only: info_store mirrors saves out to .md
-        files, but notes Cyph edits or adds by hand in Obsidian were invisible to
-        recall. This scans every vault .md, and (re)stores any file that is new or
-        changed since its last sync, keyed by filename so re-syncs update in place.
+        Reads every .md and .pdf under each folder in ZERO_KNOWLEDGE_DIRS
+        (recursively, skipping .obsidian/.trash). A file is re-read only when its
+        modified time changes. Notes deleted from disk — or whose folder is
+        removed from the list — are removed from memory too, so taking something
+        out of the vault takes it out of what Zero can see.
 
         Args:
-            vault_dir: Vault folder. Defaults to <repo-parent>/Zero Memory.
-            max_chars: Per-note cap fed to the embedder.
+            dirs: Folders to sync. Defaults to knowledge_dirs().
 
         Returns:
-            Number of notes stored/updated (0 if vault missing or ChromaDB down).
+            Number of files stored or updated.
         """
-        from pathlib import Path as _P
-        vault = _P(vault_dir) if vault_dir else _P(__file__).parent.parent.parent / "Zero Memory"
-        if not vault.exists() or self._client is None:
+        if not self._available:
             return 0
+        col = self._collection(COLLECTION_KNOWLEDGE)
+        roots = [Path(d) for d in dirs] if dirs else knowledge_dirs()
+        missing = [r for r in roots if not r.exists()]
+        for r in missing:
+            logger.warning(f"[cold] Knowledge folder not found, skipping: {r}")
+
+        seen: set[str] = set()
         synced = 0
-        for md in sorted(vault.glob("*.md")):
-            try:
-                mtime = int(md.stat().st_mtime)
-                doc_id = f"vault_{md.stem.lower().replace(' ', '_')}"
-                # Skip unchanged files: stored metadata carries the mtime.
-                try:
-                    existing = self._collections[COLLECTION_KNOWLEDGE].get(ids=[doc_id])
-                    metas = existing.get("metadatas") or []
-                    if metas and metas[0] and metas[0].get("mtime") == mtime:
-                        continue
-                except Exception:
-                    pass  # not present yet — store below
-                text = md.read_text(encoding="utf-8", errors="ignore")[:max_chars]
-                if not text.strip():
+        for root in (r for r in roots if r.exists()):
+            for path in sorted(root.rglob("*")):
+                if path.suffix.lower() not in _KB_EXTENSIONS or not path.is_file():
                     continue
-                self.store(
-                    collection=COLLECTION_KNOWLEDGE,
-                    doc_id=doc_id,
-                    text=f"{md.stem}: {text}",
-                    metadata={"topic": md.stem[:100], "source": "vault", "type": "vault", "mtime": mtime},
-                )
+                if _KB_SKIP_DIRS.intersection(path.parts):
+                    continue
+                key = hashlib.sha1(str(path.resolve()).lower().encode()).hexdigest()[:16]
+                try:
+                    mtime = int(path.stat().st_mtime)
+                    old = col.get(where={"file_key": key}, include=["metadatas"])
+                    old_ids = old.get("ids") or []
+                    if old_ids and all((m or {}).get("mtime") == mtime
+                                       for m in old.get("metadatas") or []):
+                        seen.update(old_ids)          # unchanged since last sync
+                        continue
+                    chunks = _chunk(_read_doc(path))
+                except Exception as exc:              # unreadable PDF, locked file...
+                    logger.warning(f"[cold] Knowledge sync skipped {path.name}: {exc}")
+                    continue
+                if not chunks:      # empty note / image-only PDF; old chunks purge below
+                    continue
+                new_ids = [f"kb_{key}_{i}" for i in range(len(chunks))]
+                # ponytail: one upsert per chunk — the first full sync took ~9 min on
+                # CPU. Later syncs only touch changed files. Batch the upserts if a
+                # bigger vault makes that first pass painful.
+                for i, (doc_id, chunk) in enumerate(zip(new_ids, chunks)):
+                    self.store(
+                        collection=COLLECTION_KNOWLEDGE,
+                        doc_id=doc_id,
+                        text=f"{path.stem}: {chunk}",
+                        metadata={"source": "vault", "type": "vault", "file_key": key,
+                                  "title": path.stem[:100], "path": str(path),
+                                  "chunk": i, "mtime": mtime},
+                    )
+                for stale in set(old_ids) - set(new_ids):   # the file got shorter
+                    self.delete(COLLECTION_KNOWLEDGE, stale)
+                seen.update(new_ids)
                 synced += 1
-            except (OSError, UnicodeDecodeError) as exc:
-                logger.warning(f"[cold] Vault sync skipped {md.name}: {exc}")
+
+        # Purge what's no longer on disk. A folder that is merely missing (drive
+        # unplugged) keeps its notes — only real deletions and removed folders go.
+        everything = col.get(where={"source": "vault"}, include=["metadatas"])
+        for doc_id, meta in zip(everything.get("ids") or [], everything.get("metadatas") or []):
+            if doc_id in seen:
+                continue
+            path = str((meta or {}).get("path", "")).lower()
+            if any(path.startswith(str(m).lower()) for m in missing):
+                continue
+            self.delete(COLLECTION_KNOWLEDGE, doc_id)
+
         if synced:
-            logger.info(f"[cold] Vault sync: {synced} note(s) stored/updated from {vault}")
+            logger.info(f"[cold] Knowledge sync: {synced} file(s) stored/updated, "
+                        f"{len(seen)} chunks from {len(roots) - len(missing)} folder(s)")
         return synced
 
     # ------------------------------------------------------------------

@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import sys
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -39,6 +40,14 @@ logger = logging.getLogger(__name__)
 
 LOG_DIR = Path(__file__).parent.parent / "logs"
 ZERO_ROOT = Path(__file__).parent.parent
+
+# Cosine distance (0 = identical, 1 = unrelated) a note or a rated answer must
+# beat to be put in front of the model. Lower = stricter = fewer excerpts sent
+# to the cloud. Measured on Cyph's vaults (2026-10-04): questions about his
+# dissertation scored 0.25–0.51; cricket, weather, gym, email, news and file
+# searches scored 0.70–0.82. 0.60 sits in the gap.
+_NOTES_MAX_DISTANCE = float(os.getenv("ZERO_NOTES_MAX_DISTANCE", "0.60"))
+_FEEDBACK_MAX_DISTANCE = 0.35   # a rating only steers genuinely similar questions
 
 # Agents that produce context others enrich from. They run in the first parallel
 # wave so dependents (career←research, code←brainstorm, study←research, ...) can
@@ -84,6 +93,7 @@ class TaskContext:
     user_input: str
     intent: IntentResult
     bus: ContextBus = field(default_factory=ContextBus)
+    memory_id: str = ""   # cold-memory interaction id — what 👍/👎 attach to
     selected_agents: list[AgentManifest] = field(default_factory=list)
     agent_outputs: dict[str, Any] = field(default_factory=dict)
     final_response: str = ""
@@ -214,7 +224,7 @@ class CEOAgent:
             ctx.model_used = "direct"
             ctx.total_duration_ms = int(time.time() * 1000) - start_ms
             # Save to memory even for direct responses
-            self._save_to_memory(user_input, ctx.final_response, agents_used=[])
+            ctx.memory_id = self._save_to_memory(user_input, ctx.final_response, agents_used=[])
             _log_action(ctx)
             return ctx
 
@@ -239,11 +249,13 @@ class CEOAgent:
 
         # 5. Save the full interaction to all memory tiers
         agents_used = [a.name for a in agents]
-        self._save_to_memory(user_input, ctx.final_response, agents_used)
+        ctx.memory_id = self._save_to_memory(user_input, ctx.final_response, agents_used)
 
-        # 5b. Auto-generate a reusable skill from qualifying multi-agent tasks.
-        #     Fire-and-forget — failure never surfaces to the user.
-        self._maybe_save_skill(ctx)
+        # 5b. Skills (learned routes) are no longer created here. Learning from
+        #     every answer meant learning from failures too: the broken cricket
+        #     reply became a skill whose hint was "acknowledge inability to provide
+        #     live scores". Routes are now learned only when Cyph 👍s the answer —
+        #     see core/feedback.py.
 
         _log_action(ctx)
         logger.info(
@@ -738,7 +750,7 @@ class CEOAgent:
     # Memory
     # ------------------------------------------------------------------
 
-    def _save_to_memory(self, user_input: str, response: str, agents_used: list[str]) -> None:
+    def _save_to_memory(self, user_input: str, response: str, agents_used: list[str]) -> str:
         """
         Save a completed interaction to all three memory tiers.
 
@@ -769,29 +781,14 @@ class CEOAgent:
 
         # Cold — embed and store permanently in ChromaDB
         try:
-            cold_memory.store_interaction(
+            return cold_memory.store_interaction(
                 user_input=user_input,
                 zero_response=response,
                 agents_used=agents_used,
             )
         except Exception as exc:
             logger.warning(f"[ceo] Cold memory save failed: {exc}")
-
-    def _maybe_save_skill(self, ctx: TaskContext) -> None:
-        """
-        Attempt to distil a completed multi-agent task into a reusable skill.
-
-        Delegates to skill_generator.maybe_generate() — qualifies, calls fast
-        LLM, stores. Any failure is suppressed so the user never sees it.
-
-        Args:
-            ctx: Completed TaskContext.
-        """
-        try:
-            from skills.skill_generator import maybe_generate
-            maybe_generate(ctx)
-        except Exception as exc:
-            logger.debug(f"[ceo] Skill generation skipped: {exc}")
+            return ""
 
     def _load_memory_context(self, user_input: str) -> str:
         """
@@ -829,6 +826,37 @@ class CEOAgent:
                     context_parts.append(f"Relevant past context:\n{relevant}")
         except Exception as exc:
             logger.debug(f"[ceo] Cold memory search failed: {exc}")
+
+        # Cyph's own notes (Obsidian vaults, PDFs). Gated on semantic distance: the
+        # keyword index ORs every word, so every note "matches" every message, and
+        # without a bar each request would ship dissertation excerpts to the cloud
+        # model for nothing.
+        try:
+            notes = [
+                h for h in cold_memory.hybrid_search("knowledge", user_input, n_results=8)
+                if h.get("distance", 9.0) <= _NOTES_MAX_DISTANCE
+            ][:4]
+            if notes:
+                context_parts.append("From Cyph's own notes (use these; they're his):\n" + "\n".join(
+                    f"- [{(h.get('metadata') or {}).get('title', 'note')}] {h['text'][:700]}"
+                    for h in notes))
+        except Exception as exc:
+            logger.debug(f"[ceo] Notes recall failed: {exc}")
+
+        # How Cyph rated answers to similar questions — the feedback loop.
+        try:
+            rated = [h for h in cold_memory.search("feedback", user_input, n_results=3)
+                     if h.get("distance", 9.0) <= _FEEDBACK_MAX_DISTANCE][:2]
+            for h in rated:
+                meta = h.get("metadata") or {}
+                verdict = ("Cyph rated this answer 👍 — match what worked"
+                           if meta.get("rating", 0) > 0 else
+                           "Cyph rated this answer 👎 — don't repeat what went wrong")
+                context_parts.append(
+                    f"{verdict}. He asked: {h['text'][:200]!r}\n"
+                    f"The answer was: {str(meta.get('answer', ''))[:700]}")
+        except Exception as exc:
+            logger.debug(f"[ceo] Feedback recall failed: {exc}")
 
         return "\n\n".join(context_parts)
 

@@ -53,6 +53,13 @@ messages.
 > Telegram sends `.oga`. If ffmpeg is missing the bot says so explicitly rather than
 > failing silently.
 
+## 👍 / 👎
+
+Every answer gets two buttons. Tapping one shows a toast (*"👍 Noted — learned the route
+…"*) and removes the buttons. `callback_data` is `fb:+:<interaction id>` — 31 bytes, under
+Telegram's 64 — so it works on old messages after restarts. What a rating does:
+[[Memory#The feedback loop]].
+
 ## Confirmations
 
 Anything destructive — delete, move, overwrite, or running a shell command — or anything

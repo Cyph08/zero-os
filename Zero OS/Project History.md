@@ -21,6 +21,7 @@ lives in `.zero\CLAUDE.md`.
 | 2026-09-30 | This vault |
 | 2026-10-03 | Follow-up rule was swallowing every message — cricket scores edited the snake game |
 | 2026-10-04 | Games-only builds · Herald searches the actual question · admin-restart loop explained |
+| 2026-10-04 | Zero reads your vaults and PDFs · 👍/👎 feedback loop · routes learned only from 👍 · routing tests in the repo |
 
 ---
 

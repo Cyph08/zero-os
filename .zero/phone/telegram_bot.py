@@ -297,9 +297,11 @@ class ZeroTelegramBot:
         stop = asyncio.Event()
         typer = asyncio.create_task(self._keep_typing(chat_id, stop))
         images: list[str] = []
+        memory_id = ""
         try:
             ctx = await asyncio.to_thread(ceo.handle, text, confirmed)
             reply = (ctx.final_response or "").strip() or "No response produced."
+            memory_id = ctx.memory_id
             agents = ", ".join(a.name for a in ctx.selected_agents) or "direct"
             # Iris publishes image URLs from its Tavily search — show them.
             if ctx.bus is not None:
@@ -318,7 +320,13 @@ class ZeroTelegramBot:
             stop.set()
             typer.cancel()
 
-        await self._send(chat_id, reply)
+        rate: dict[str, Any] = {}
+        if memory_id:
+            rate["reply_markup"] = {"inline_keyboard": [[
+                {"text": "👍", "callback_data": f"fb:+:{memory_id}"},
+                {"text": "👎", "callback_data": f"fb:-:{memory_id}"},
+            ]]}
+        await self._send(chat_id, reply, **rate)
 
         # Images Iris found (Telegram fetches these by URL — no upload needed).
         for url in images:
@@ -451,9 +459,23 @@ class ZeroTelegramBot:
         await self._handle_text(chat_id, transcript)
 
     async def _handle_callback(self, cb: dict[str, Any]) -> None:
-        """Handle a Yes/Cancel tap on a confirmation prompt."""
+        """Handle a tap: 👍/👎 on an answer, or Yes/Cancel on a confirmation."""
         data = cb.get("data") or ""
-        chat_id = (cb.get("message") or {}).get("chat", {}).get("id")
+        msg = cb.get("message") or {}
+        chat_id = msg.get("chat", {}).get("id")
+
+        if data.startswith("fb:"):                       # 👍 / 👎 on an answer
+            _, sign, memory_id = data.split(":", 2)
+            from core.feedback import record
+            note = await asyncio.to_thread(record, memory_id, 1 if sign == "+" else -1)
+            await self._call("answerCallbackQuery", callback_query_id=cb.get("id", ""),
+                             text=note)
+            if chat_id is not None and msg.get("message_id"):
+                await self._call("editMessageReplyMarkup", chat_id=chat_id,
+                                 message_id=msg["message_id"],
+                                 reply_markup={"inline_keyboard": []})
+            return
+
         await self._call("answerCallbackQuery", callback_query_id=cb.get("id", ""))
         if chat_id is None:
             return

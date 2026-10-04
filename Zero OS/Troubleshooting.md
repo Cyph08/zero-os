@@ -79,6 +79,17 @@ Fixed — only games are built now ([[Forge]]). If a non-game message ever produ
 
 Fixed — [[Herald]] now searches your actual question. If it recurs, the search itself is almost certainly fine; check which branch ran in `logs/news.log`.
 
+## Zero doesn't know something in my notes
+
+Check the folder is in `ZERO_KNOWLEDGE_DIRS` and the backend has restarted since you
+added the note (sync runs on start). If the note is there but not used, the question may
+be too far from it — distance bar is `ZERO_NOTES_MAX_DISTANCE` (0.60). Raising it sends
+more to the cloud model.
+
+## Zero keeps doing something I don't like
+
+👎 it. That deletes the learned route behind it and steers similar questions away.
+
 ## Wrong agent answered
 
 Same cause as above, or a keyword collision. Check the routing in

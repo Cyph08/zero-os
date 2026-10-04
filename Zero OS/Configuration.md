@@ -55,6 +55,13 @@ same folder documents the shape without the values.
 | `FORGE_BUILD_REVIEW` | `0` skips [[Forge]]'s automatic QA pass |
 | `WAKE_DEBUG` | Wake-word diagnostics |
 
+## What Zero knows
+
+| Variable | Notes |
+|---|---|
+| `ZERO_KNOWLEDGE_DIRS` | `K:\Dissertation;K:\foresight;K:\Zero\Zero OS` — folders it reads and remembers. Remove one and its notes leave memory on the next start. [[Memory#Your notes]] |
+| `ZERO_NOTES_MAX_DISTANCE` | `0.60` (default). How relevant a note must be to reach the prompt. Lower = stricter = less sent to the cloud |
+
 ## Tools and integrations
 
 | Variable | For |

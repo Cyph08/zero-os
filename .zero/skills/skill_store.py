@@ -151,6 +151,18 @@ class SkillStore:
         except Exception as exc:
             logger.error(f"[skill_store] increment_use failed: {exc}")
 
+    def delete(self, skill_id: str) -> None:
+        """Remove a skill — used when Cyph 👎s an answer it routed."""
+        if not self._available:
+            return
+        try:
+            with self._lock:
+                self._conn.execute("DELETE FROM skills WHERE id=?", (skill_id,))  # type: ignore[union-attr]
+                self._conn.commit()  # type: ignore[union-attr]
+            logger.info(f"[skill_store] Deleted {skill_id!r}")
+        except Exception as exc:
+            logger.error(f"[skill_store] delete failed: {exc}")
+
     # ------------------------------------------------------------------
     # Read
     # ------------------------------------------------------------------
