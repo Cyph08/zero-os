@@ -539,7 +539,7 @@ def _chat_ollama(
                            provider=Provider.OLLAMA, model=model, cost_usd=0.0)
     except Exception as exc:
         raise RuntimeError(
-            f"Ollama not reachable. Run `ollama serve` then `ollama pull mistral`. Error: {exc}"
+            f"Ollama not reachable. Run `ollama serve` then `ollama pull {_MODELS[Provider.OLLAMA]['fast']}`. Error: {exc}"
         ) from exc
 
 

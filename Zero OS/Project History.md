@@ -19,6 +19,8 @@ lives in `.zero\CLAUDE.md`.
 | 2026-09-29 | Routing hijack by stale learned skills fixed · autostart + [[Using Zero\|usage guide]] |
 | 2026-09-29 | Conversation continuity fixed — [[Memory#Follow-ups]] |
 | 2026-09-30 | This vault |
+| 2026-10-03 | Follow-up rule was swallowing every message — cricket scores edited the snake game |
+| 2026-10-04 | Games-only builds · Herald searches the actual question · admin-restart loop explained |
 
 ---
 

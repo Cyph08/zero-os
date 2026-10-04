@@ -306,6 +306,71 @@ classifier = IntentClassifier()
 
 
 # ---------------------------------------------------------------------------
+# Game build detection
+# ---------------------------------------------------------------------------
+
+# Zero builds ONE kind of thing on the laptop: games. Everything else is answered
+# in Telegram as text or images. Both the CEO (route to Forge) and Forge (save +
+# open an HTML file) call these, so they cannot disagree again.
+#
+# The verb must act on the game: "make me a snake game". Substring matching used
+# to see "give me" + "games" in "the India Pakistan match in Asian games, give me
+# the result" and build india-pakistan-match-in-asian.html.
+_GAME_BUILD_RE = re.compile(
+    r"\b(?:make|build|create|code|program|develop|design|write)\b"
+    r"(?:\s+\S+){0,4}?\s+(?:game|arcade)\b(?!\s*plan)"
+)
+# ponytail: named sporting events, listed by hand. Add one when it misfires.
+_EVENT_GAMES = ("asian games", "olympic", "commonwealth games", "paralympic",
+                "world games", "youth games", "pan american games")
+_GAME_FIX_RE = re.compile(r"\b(?:the|my|this|that|your)\s+(?:\w+\s+)?game\b")
+_GAME_FIX_WORDS = (
+    "fix", "debug", "not working", "not starting", "won't start", "wont start",
+    "doesn't work", "does not work", "isn't working", "not opening", "not loading",
+    "broken", "bug", "improve", "better", "change", "add ", "remove", "update",
+    "tweak", "redo", "blank", "white screen", "still not", "won't run",
+    "faster", "slower", "harder", "easier",
+)
+
+
+def is_game_build(text: str) -> bool:
+    """
+    True only for a request to BUILD a game ("make me a snake game").
+
+    Args:
+        text: The user's message.
+
+    Returns:
+        True when a build verb acts on a game, and it isn't a sporting event.
+    """
+    t = text.lower()
+    if any(e in t for e in _EVENT_GAMES):
+        return False
+    return bool(_GAME_BUILD_RE.search(t))
+
+
+def is_game_fix(text: str) -> bool:
+    """
+    True for a change to a game Zero built, named explicitly ("the game won't start").
+
+    Pronoun follow-ups ("make it faster") are is_build_followup's job — they're
+    only safe when the previous turn was a build. This catches the explicit case,
+    which is safe at any time because it says "game". It used to accept "it",
+    "this", "website", "page" too, so "improve this email" re-opened snake.html.
+
+    Args:
+        text: The user's message.
+
+    Returns:
+        True when a change word meets an explicit reference to a game.
+    """
+    t = text.lower()
+    if "agent" in t or any(e in t for e in _EVENT_GAMES):
+        return False
+    return bool(_GAME_FIX_RE.search(t)) and any(w in t for w in _GAME_FIX_WORDS)
+
+
+# ---------------------------------------------------------------------------
 # Build follow-up detection
 # ---------------------------------------------------------------------------
 

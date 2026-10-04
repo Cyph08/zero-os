@@ -26,7 +26,7 @@ import re
 from core.bus import ContextBus
 from core.errlog import log_error
 from core.intent import (IntentClassifier, IntentResult, RiskLevel, classifier,
-                         is_build_followup)
+                         is_build_followup, is_game_build, is_game_fix)
 from core.llm import chat, detect_provider
 from core.personas import persona_state, PERSONAS
 from core.quality import grade_and_fix, assess_depth, iters_for
@@ -258,58 +258,6 @@ class CEOAgent:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _is_build_request(text: str) -> bool:
-        """
-        True if the user is asking for a runnable thing to be built (app/site/game).
-
-        These must go to Forge alone — research/study/BCI agents hijacking a build
-        request was the cause of "make a game" returning analysis instead of a file.
-
-        Args:
-            text: Raw user command.
-
-        Returns:
-            True when a build verb meets a build target.
-        """
-        t = text.lower()
-        verbs = ("make", "build", "create", "generate", "design", "develop",
-                 "code", "program", "give me")
-        targets = ("app", "website", "web app", "webpage", "web page", "site",
-                   "game", "arcade", "clone", "landing page", "dashboard",
-                   "html", "frontend", "ui ", "tool", "simulator", "calculator")
-        return any(v in t for v in verbs) and any(s in t for s in targets)
-
-    @staticmethod
-    def _is_iterate_request(text: str) -> bool:
-        """
-        True if the user wants to fix/improve/change a thing Forge already built.
-
-        Routes "the game isn't starting", "fix the website", "make it better" to Forge
-        (which re-opens the real file) instead of letting "improve" pull in Vanta or
-        the analysis agents. Agent-improvement requests keep "agent" and route to Vanta.
-
-        Args:
-            text: Raw user command.
-
-        Returns:
-            True for iterate-on-last-build intent.
-        """
-        t = text.lower()
-        if "agent" in t:
-            return False
-        change = (
-            "fix", "debug", "not working", "not starting", "won't start", "wont start",
-            "doesn't work", "does not work", "isn't working", "not opening", "not loading",
-            "broken", "bug", "improve", "make it better", "better", "not opening",
-            "the problem", "find the fix", "doesn't start", "won't run", "still not",
-        )
-        artifact = (
-            "game", "website", "web site", "web app", "webpage", "web page",
-            " site", " page", " app", "it ", "this", "that",
-        )
-        return any(c in t for c in change) and any(a in t for a in artifact)
-
-    @staticmethod
     def _build_needs_facts(text: str) -> bool:
         """
         True if a build references real-world / current information that Iris should
@@ -353,24 +301,21 @@ class CEOAgent:
         Returns:
             Ordered list of AgentManifest to invoke (may be empty).
         """
-        # Build pipeline: "make me a game / website / app" leads with Forge, and
-        # brings Iris in FIRST only when the build needs real-world facts (e.g. a
-        # weather dashboard). Self-contained builds (games, calculators) skip
-        # research and go straight to Forge so they stay fast. Either way, the
-        # chatty analysis agents never hijack a build.
+        # Build pipeline: Zero builds GAMES only — everything else is answered in
+        # Telegram. "make me a snake game" goes to Forge alone, with Iris first only
+        # when the game needs real-world facts (a quiz on this week's news).
         # History-aware: "make it faster" names no artifact and matched no keyword
         # list, so it used to reach NO agent at all and the CEO answered directly —
         # claiming it had edited the game when nothing had run.
         followup = is_build_followup(
             bus.get("last_exchange", "") if bus else "", user_input
         )
-        if (self._is_build_request(user_input) or self._is_iterate_request(user_input)
-                or followup):
+        if is_game_build(user_input) or is_game_fix(user_input) or followup:
             code_m = self._registry.get("code")
             if code_m is not None:
                 chain: list[AgentManifest] = []
                 # Fresh builds may need facts first; iteration edits the existing file.
-                if self._is_build_request(user_input) and self._build_needs_facts(user_input):
+                if is_game_build(user_input) and self._build_needs_facts(user_input):
                     research_m = self._registry.get("research")
                     if research_m is not None:
                         chain.append(research_m)   # wave 1: gather facts → bus

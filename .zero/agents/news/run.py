@@ -16,6 +16,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -80,24 +81,51 @@ class NewsResult:
 # News type classifier
 # ---------------------------------------------------------------------------
 
+def _has_any(q: str, words: list[str]) -> bool:
+    """Whole-word / whole-phrase match. Substrings sent "Ukraine" to AI news."""
+    return any(re.search(rf"\b{re.escape(w)}\b", q) for w in words)
+
+
 def _detect_news_type(query: str) -> str:
     q = query.lower()
-    if any(w in q for w in ["briefing", "morning", "daily", "what's happening", "whats happening"]):
+    if _has_any(q, ["briefing", "morning", "daily", "what's happening", "whats happening"]):
         return "briefing"
-    if any(w in q for w in ["bci", "eeg", "motor imagery", "brain", "neuroscience", "paper", "arxiv", "research"]):
+    if _has_any(q, ["bci", "eeg", "motor imagery", "brain", "neuroscience", "paper", "arxiv", "research"]):
         return "bci"
-    if any(w in q for w in ["ai", "ml", "llm", "machine learning", "deep learning", "model", "gpt", "claude"]):
+    if _has_any(q, ["ai", "ml", "llm", "machine learning", "deep learning", "model", "gpt", "claude"]):
         return "ai"
-    if any(w in q for w in ["digest", "weekly", "summary"]):
+    if _has_any(q, ["digest", "weekly", "summary"]):
         return "digest"
     return "world"
+
+
+# Words that make a message a generic "give me the news" rather than a question.
+_GENERIC_NEWS_WORDS = frozenset("""
+a an and any anything are at breaking can current events for from give going
+happening headlines i in is it latest me my new news of on on please show tell
+the there today today's todays top update updates what what's whats world you
+""".split())
+
+
+def _specific_question(query: str) -> bool:
+    """
+    True when Cyph asked about something in particular ("India Pakistan result"),
+    not for the news in general ("give me the latest news").
+
+    Every branch used to search a fixed canned query, so a specific question was
+    NEVER sent to the search engine — "Today's India Pakistan result" searched
+    "top world news today breaking" and Herald replied it couldn't find scores.
+    """
+    words = re.findall(r"[a-z0-9']+", query.lower())
+    return any(w not in _GENERIC_NEWS_WORDS for w in words)
 
 
 # ---------------------------------------------------------------------------
 # Fast parallel search — basic depth, no raw content, all queries concurrent
 # ---------------------------------------------------------------------------
 
-def _search_news(tagged_queries: list[tuple[str, str]], max_results: int = 3) -> list[dict[str, str]]:
+def _search_news(tagged_queries: list[tuple[str, str]], max_results: int = 3,
+                 topic: str = "general", days: int | None = None) -> list[dict[str, str]]:
     """
     Run news searches in parallel with basic depth.
 
@@ -109,6 +137,8 @@ def _search_news(tagged_queries: list[tuple[str, str]], max_results: int = 3) ->
         tagged_queries: List of (tag, query_string) pairs. Tag is passed through
                         to results so callers can split world vs AI results.
         max_results:    Results per query.
+        topic:          Tavily topic — "news" for recent dated reporting.
+        days:           With topic="news", how far back to look.
 
     Returns:
         Flat list of result dicts with keys: tag, title, url, snippet.
@@ -123,11 +153,15 @@ def _search_news(tagged_queries: list[tuple[str, str]], max_results: int = 3) ->
         try:
             from tavily import TavilyClient
             client = TavilyClient(api_key=api_key)
+            extra = {"topic": topic}
+            if days is not None:
+                extra["days"] = days
             resp = client.search(
                 query=query,
                 max_results=max_results,
                 search_depth="basic",
                 include_raw_content=False,
+                **extra,
             )
             return [
                 {
@@ -135,6 +169,7 @@ def _search_news(tagged_queries: list[tuple[str, str]], max_results: int = 3) ->
                     "title": r.get("title", ""),
                     "url": r.get("url", ""),
                     "snippet": r.get("content", ""),
+                    "date": r.get("published_date", ""),
                 }
                 for r in resp.get("results", [])
             ]
@@ -153,6 +188,22 @@ def _search_news(tagged_queries: list[tuple[str, str]], max_results: int = 3) ->
 # ---------------------------------------------------------------------------
 # Prompt builders
 # ---------------------------------------------------------------------------
+
+def _build_direct_answer_prompt(query: str, results: list[dict]) -> str:
+    items = "\n".join(
+        f"- [{r.get('date', '')[:16]}] {r.get('title', 'Untitled')}: {r.get('snippet', '')}"
+        for r in results[:8]
+    )
+    return (
+        f"Cyph asked: {query}\n\n"
+        f"Fresh search results, newest reporting first:\n{items}\n\n"
+        f"Answer his question directly from these results — the actual result, score, "
+        f"names, numbers, date. Lead with the answer, then one or two lines of the most "
+        f"useful context. If the results genuinely don't contain the answer, say so "
+        f"plainly and say what they do show. Never claim you can't search or can't get "
+        f"live information: you just did."
+    )
+
 
 def _build_world_news_prompt(query: str, results: list[dict]) -> str:
     items = "\n".join(
@@ -390,7 +441,14 @@ def run(query: str = "morning briefing", bus: "ContextBus | None" = None) -> New
             prompt = _build_bci_research_prompt(query, all_results)
             story_count = len(all_results)
 
-        else:  # world
+        elif _specific_question(query):  # "India Pakistan result", "who won X"
+            results = _search_news([("asked", query)], max_results=6, topic="news", days=7)
+            if not results:   # nothing in the news index — try the general web
+                results = _search_news([("asked", query)], max_results=6)
+            prompt = _build_direct_answer_prompt(query, results)
+            story_count = len(results)
+
+        else:  # world — "give me the latest news"
             tagged = [("world", q) for q in WORLD_NEWS_QUERIES]
             results = _search_news(tagged, max_results=5)
             prompt = _build_world_news_prompt(query, results)

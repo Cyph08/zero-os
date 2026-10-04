@@ -20,6 +20,11 @@ tags: [zero-os, agent]
 
 ## What it does
 
+**Specific questions get searched directly.** "India Pakistan result" or "who won the F1" sends *your* words to Tavily (`topic="news"`, last 7 days) and answers from what comes back — result, score, names, date. "Give me the latest news" still gets the curated digest.
+
+> [!bug] It used to never search what you asked
+> Every branch searched a fixed canned query, so "India Pakistan result" searched *"top world news today breaking"* — and the prompt then said *skip sports*. It replied that it couldn't pull live scores. Type detection also matched substrings, so "Ukraine" and "Bahrain" were classed as AI news (`ukr-AI-ne`).
+
 World news, AI/tech updates and the BCI research digest. Drives three scheduled pushes — see [[Commands#Scheduled jobs]]. The morning briefing opens with live Manchester weather.
 
 Historically the slowest agent (~33s) because it fans out across several sources.

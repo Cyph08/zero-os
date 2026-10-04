@@ -20,10 +20,12 @@ until it is. Commands to start it manually: [[Commands#Start / stop]].
 
 Just say what you want. No commands, no syntax — Zero picks the specialist.
 
+**Everything comes back in Telegram, as text or images.** The one exception is games: those are built as a file, opened on the laptop, and sent to you.
+
 | You say | What happens |
 |---|---|
 | "latest research on motor imagery BCI" | [[Iris]] searches the web and papers, answers with citations, sends any images |
-| "make me a snake game" | [[Forge]] builds it, saves it to `Zero Tech`, **sends you the file** |
+| "make me a snake game" | [[Forge]] builds it, opens it on the laptop, **sends you the file** |
 | "now add levels and three lives" | [[Forge]] **edits that same game** — [[Memory#Follow-ups]] |
 | "find my dissertation notes" | [[Helm]] searches your laptop and gives you real paths |
 | "what's in my downloads folder" | [[Helm]] lists it |
@@ -32,6 +34,7 @@ Just say what you want. No commands, no syntax — Zero picks the specialist.
 | "draft an email to my supervisor" | [[Echo]] writes it — it never sends anything |
 | "how should I train around study days" | [[Pulse]] — it knows your Chen's shifts |
 | "give me a briefing" | [[Herald]] — Manchester weather, your day, world + AI news |
+| "India vs Pakistan result" | [[Herald]] searches it and gives you the score |
 | *send a voice note* | Whisper transcribes it, then it's handled like any message |
 
 ### Commands

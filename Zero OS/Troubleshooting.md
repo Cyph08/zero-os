@@ -16,8 +16,12 @@ The backend isn't running. Start it visibly and watch the window:
 K:\Zero\restart-zero.bat
 ```
 
-If that says **"Access is denied"**, the old process is admin-owned — right-click →
-*Run as administrator*.
+If that says **"Access is denied"**, the old process is admin-owned. Don't fix it by running `restart-zero.bat` as administrator — the *new* backend inherits admin rights and the next restart is denied too. Break the loop once:
+
+1. Right-click `K:\Zero\stop-zero.bat` → *Run as administrator*
+2. Double-click `K:\Zero\start-zero-hidden.vbs` normally
+
+After that, restarts never need admin. Autostart on login is not elevated.
 
 Check the port directly: `netstat -ano | findstr :8000`, or `curl http://127.0.0.1:8000/health`.
 
@@ -66,6 +70,14 @@ The matcher was fixed (stopwords + a coverage threshold) and five polluted skill
 but the mechanism can still learn a bad pattern.
 
 ---
+
+## It built a website when I asked a question
+
+Fixed — only games are built now ([[Forge]]). If a non-game message ever produces a file again, check `agents_used` in `logs/ceo_actions.jsonl`: `['code']` on a question means the build check misfired. The cases it must pass are asserted offline.
+
+## Zero says it can't find live results
+
+Fixed — [[Herald]] now searches your actual question. If it recurs, the search itself is almost certainly fine; check which branch ran in `logs/news.log`.
 
 ## Wrong agent answered
 

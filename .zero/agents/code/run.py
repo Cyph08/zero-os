@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from core.intent import is_build_followup
+from core.intent import is_build_followup, is_game_build, is_game_fix
 from core.llm import chat
 
 if TYPE_CHECKING:
@@ -42,12 +42,6 @@ ZERO_ROOT = Path(__file__).parent.parent.parent
 TECH_DIR = ZERO_ROOT.parent / "Zero Tech"
 
 # Words that signal "build me a runnable web thing" rather than a Python snippet.
-_BUILD_VERBS = ("make", "build", "create", "generate", "design", "develop", "give me")
-_WEB_SIGNALS = (
-    "app", "website", "web app", "webpage", "web page", "site", "game",
-    "landing page", "dashboard", "ui", "frontend", "front-end", "html page", "web page",
-)
-
 # Cyph's tech stack context for the code agent
 STACK_CONTEXT = """
 Cyph's tech stack:
@@ -122,38 +116,6 @@ def _detect_action(query: str) -> str:
     if any(w in q for w in ["refactor", "clean up", "optimise", "optimize", "restructure"]):
         return "refactor"
     return "write"
-
-
-def _wants_iteration(query: str) -> bool:
-    """
-    Return True if the user wants to fix / improve / change a previously built app.
-
-    These requests ("the game isn't starting", "fix it", "make the website better")
-    must re-open the actual file Forge built and edit THAT code — not regenerate a
-    new app from scratch. Agent-improvement ("improve the X agent") is excluded so it
-    keeps routing to Vanta.
-
-    Args:
-        query: Raw user query.
-
-    Returns:
-        True for iterate-on-last-build intent.
-    """
-    q = query.lower()
-    if "agent" in q:
-        return False
-    change = (
-        "fix", "debug", "not working", "not starting", "won't start", "wont start",
-        "doesn't work", "does not work", "isn't working", "not opening", "not loading",
-        "broken", "error", "bug", "improve", "make it better", "better", "change",
-        "add ", "remove", "update", "tweak", "redo", "blank", "white screen",
-        "still not", "the problem", "find the fix", "doesn't start", "won't run",
-    )
-    artifact = (
-        "game", "website", "web site", "web app", "webpage", "web page",
-        " site", " page", " html", " app", " ui ", "it ", "this", "that",
-    )
-    return any(c in q for c in change) and any(a in q for a in artifact)
 
 
 def _build_from_history(history: str) -> "Path | None":
@@ -349,25 +311,6 @@ def _wants_execution(query: str) -> bool:
 # ---------------------------------------------------------------------------
 # Prompt builder
 # ---------------------------------------------------------------------------
-
-def _wants_app_build(query: str) -> bool:
-    """
-    Return True if the user is asking Forge to build a runnable web app / site / game.
-
-    These get written to disk in `Zero Tech` and opened in the browser, instead of
-    being returned as copy-paste code.
-
-    Args:
-        query: Raw user query.
-
-    Returns:
-        True for clear "build me a website/app/game" intent.
-    """
-    q = query.lower()
-    has_verb = any(v in q for v in _BUILD_VERBS)
-    has_web = any(s in q for s in _WEB_SIGNALS)
-    return has_verb and has_web
-
 
 def _build_prompt(query: str, action_type: str, brainstorm_context: str = "",
                   app_build: bool = False, research_context: str = "") -> str:
@@ -702,7 +645,9 @@ def run(query: str, bus: "ContextBus | None" = None) -> CodeResult:
     logger.info(f"[forge] Query: {query!r}")
 
     action_type = _detect_action(query)
-    app_build = _wants_app_build(query)
+    # Only games are built as files and opened on the laptop. Anything else
+    # Forge is asked comes back as text in Telegram.
+    app_build = is_game_build(query)
 
     # Conversation history, published to the bus by the CEO. Without it Forge saw
     # only the current sentence, so "now add levels" had no idea what "it" was.
@@ -712,7 +657,7 @@ def run(query: str, bus: "ContextBus | None" = None) -> CodeResult:
     # follow-up to a build earlier in this conversation — re-open the actual file
     # Forge last built and edit THAT code instead of regenerating a new app blind.
     last_exchange = bus.get("last_exchange", "") if bus is not None else ""
-    iterate = _wants_iteration(query) or is_build_followup(last_exchange, query)
+    iterate = is_game_fix(query) or is_build_followup(last_exchange, query)
     # ponytail: history wins over the filename guess. Naming a DIFFERENT old project
     # mid-conversation would still pick this conversation's build — match the name
     # against history's paths too if that ever bites.

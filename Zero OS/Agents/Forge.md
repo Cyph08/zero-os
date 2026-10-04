@@ -20,7 +20,9 @@ tags: [zero-os, agent]
 
 ## What it does
 
-Builds **self-contained single-file HTML apps and games**, saves them to `K:\Zero\Zero Tech\`, and opens them in the browser. The file is sent to you in Telegram as a document.
+Builds **games** — and only games — as self-contained HTML files, saves them to `K:\Zero\Zero Tech\`, and opens them in the browser. The file is sent to you in Telegram as a document.
+
+**Games are the only thing Zero builds or opens on the laptop.** Ask for a website, dashboard or landing page and you get the code or the answer in Telegram instead. The decision is `core.intent.is_game_build()`, shared with the CEO so the two can't disagree: a build verb has to act on the game ("make me a snake game"), and sporting events are excluded — "give me the Asian Games result" once built `india-pakistan-match-in-asian.html`.
 
 **Iteration.** A follow-up in the same conversation edits the file it just built rather than creating a new one — "create levels with three lives each" after a snake game modifies the snake game. It keeps the same filename and leaves the previous version as `<name>.html.bak`. A request for a whole new artifact ("make me *a* racing game") starts a fresh file but still carries every requirement from earlier in the conversation. See [[Memory]] for why this needed fixing.
 

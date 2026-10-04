@@ -15,11 +15,11 @@ Everything you'd actually type. Paths are absolute so they work from any shell.
 
 ## Start / stop
 
-| What | Command |
-|---|---|
-| **Start it (silent)** — what autostart uses | `K:\Zero\start-zero-hidden.vbs` |
-| **Start it with a visible log** — use this to debug | `K:\Zero\restart-zero.bat` |
-| **Stop it** | `K:\Zero\stop-zero.bat` |
+| What                                                | Command                         |
+| --------------------------------------------------- | ------------------------------- |
+| **Start it (silent)** — what autostart uses         | `K:\Zero\start-zero-hidden.vbs` |
+| **Start it with a visible log** — use this to debug | `K:\Zero\restart-zero.bat`      |
+| **Stop it**                                         | `K:\Zero\stop-zero.bat`         |
 
 `restart-zero.bat` kills whatever holds port 8000, waits, then launches uvicorn from
 `K:\Zero\.venv` on `127.0.0.1:8000`. If it says **"Access is denied"**, right-click →
